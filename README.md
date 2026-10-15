@@ -53,6 +53,22 @@ writer a few real facts, such as the site's headline, and simple signals like "n
 Output: `output/emails.csv` with `subject`, `body`, `personalization` (high/medium/low) and
 `angle`. Your sign-off and opt-out line from `profile.json` are added to every email.
 
+## Comment + email in one run (`both`)
+
+For a list where every row has a post, a business name, the owner's name and an email:
+
+```
+python main.py both --input sample/old_data.csv --limit 5
+```
+
+Input can be CSV, Excel (`.xlsx`) or JSON. Column names are matched loosely, for example
+`Post Content`, `Business Name`, `Owner Name` and `Email` all work (also `post_text`,
+`company`, `name`, `owner`, `website`, `post_url`...).
+
+Output: `output/outreach.csv`, one row per lead, with `comment` (for their post),
+`subject` and `body` (the email), plus notes on why. Rows with no valid email still get a
+comment; posts that are not a real need get no comment (the reason is in `comment_note`).
+
 ## Useful options
 
 - `--limit 5` try a few first

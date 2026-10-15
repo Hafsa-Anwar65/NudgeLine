@@ -3,7 +3,7 @@
 
 import argparse
 
-from drafter import comments, emails
+from drafter import both, comments, emails
 from drafter.common import ROOT, LLM, load_env, load_profile
 
 
@@ -31,6 +31,14 @@ def build_parser():
         "--fetch-sites", action="store_true",
         help="fetch each lead's homepage (plain HTTP, one request) for extra personalization",
     )
+    b = sub.add_parser(
+        "both", parents=[common],
+        help="one run, two drafts per row: a comment on the post AND an email (CSV, XLSX or JSON)",
+    )
+    b.add_argument(
+        "--fetch-sites", action="store_true",
+        help="also read each business website (needs a website column)",
+    )
     return ap
 
 
@@ -38,13 +46,17 @@ def main():
     args = build_parser().parse_args()
     load_env()
     if not args.output:
-        name = f"{args.cmd}_dryrun" if args.dry_run else args.cmd
+        name = "outreach" if args.cmd == "both" else args.cmd
+        if args.dry_run:
+            name += "_dryrun"
         args.output = str(ROOT / "output" / f"{name}.csv")
     profile = load_profile(args.profile)
     llm = LLM(dry_run=args.dry_run)
 
     if args.cmd == "comments":
         comments.run(args, profile, llm)
+    elif args.cmd == "both":
+        both.run(args, profile, llm)
     else:
         emails.run(args, profile, llm)
 

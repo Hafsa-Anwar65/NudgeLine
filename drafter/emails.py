@@ -11,14 +11,24 @@ from .common import done_ids, open_writer
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-# Accepted column names (case-insensitive) for each field in a CSV.
+# Accepted column names for each field. Headers are matched in lower case with spaces
+# and symbols turned into "_", so "Business Name" matches "business_name".
 FIELD_MAP = {
-    "email": ("email", "e-mail", "email_address", "emails"),
-    "name": ("name", "first_name", "full_name", "contact", "contact_name"),
-    "company": ("company", "business", "business_name", "organization", "organisation"),
-    "website": ("website", "url", "site", "web"),
-    "notes": ("notes", "context", "details", "post_text", "description", "about"),
+    "email": ("email", "e_mail", "email_address", "emails", "owner_email", "business_email"),
+    "name": ("name", "owner", "owner_name", "business_owner", "contact", "contact_name",
+             "full_name", "first_name", "author", "author_name"),
+    "company": ("company", "company_name", "business", "business_name", "page_name",
+                "organization", "organisation"),
+    "website": ("website", "business_website", "website_url", "site", "web"),
+    "notes": ("notes", "context", "details", "post_text", "post", "post_content", "content",
+              "text", "message", "body", "description", "about"),
+    "post_url": ("post_url", "url", "link", "permalink"),
 }
+
+
+def norm_key(key):
+    """'Business Name' -> 'business_name'."""
+    return re.sub(r"[^a-z0-9]+", "_", str(key or "").strip().lower()).strip("_")
 
 OUTPUT_FIELDS = [
     "email", "name", "company", "website", "subject", "body",
@@ -44,7 +54,7 @@ def load_leads(path):
     if p.suffix.lower() == ".csv":
         with p.open(newline="", encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
-                row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+                row = {norm_key(k): (v or "").strip() for k, v in row.items()}
                 lead = {}
                 for field, aliases in FIELD_MAP.items():
                     lead[field] = next((row[a] for a in aliases if row.get(a)), "")
@@ -121,9 +131,11 @@ Reply with ONLY a JSON object, nothing else:
 {{"subject": "...", "body": "...", "personalization": "high" or "medium" or "low", "angle": "one short line: what the email is built around"}}"""
 
 
-def build_user_message(lead, site_summary):
+def build_user_message(lead, site_summary, notes_label="Notes"):
     lines = ["Lead details:"]
     for label, key in (("Name", "name"), ("Company", "company"), ("Website", "website"), ("Notes", "notes")):
+        if key == "notes":
+            label = notes_label
         if lead.get(key):
             lines.append(f"- {label}: {lead[key][:1200]}")
     if site_summary:
