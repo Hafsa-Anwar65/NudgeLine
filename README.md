@@ -14,8 +14,12 @@ pip install -r requirements.txt
 copy .env.example .env        (Windows)   |   cp .env.example .env   (Mac/Linux)
 ```
 
-Open `.env` and paste your `ANTHROPIC_API_KEY`. Then edit `profile.json` with your name,
-what you offer, and your sign-off.
+Open `.env` and fill in **one** key: `XAI_API_KEY` for Grok (key starts with `xai-`) or
+`ANTHROPIC_API_KEY` for Claude (key starts with `sk-ant-`). The provider is picked from whichever
+key is set. If the default model name is rejected as "not found", copy an exact model name from
+your provider's console into `LLM_MODEL` in `.env`.
+
+Then edit `profile.json` with your name, what you offer, and your sign-off.
 
 ## Comments
 

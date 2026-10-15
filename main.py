@@ -38,7 +38,8 @@ def main():
     args = build_parser().parse_args()
     load_env()
     if not args.output:
-        args.output = str(ROOT / "output" / f"{args.cmd}.csv")
+        name = f"{args.cmd}_dryrun" if args.dry_run else args.cmd
+        args.output = str(ROOT / "output" / f"{name}.csv")
     profile = load_profile(args.profile)
     llm = LLM(dry_run=args.dry_run)
 
