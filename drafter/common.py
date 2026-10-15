@@ -1,4 +1,4 @@
-"""Shared helpers: .env loading, profile, CSV resume, and the LLM call wrapper (Grok or Claude)."""
+"""Shared helpers: .env loading, profile, CSV resume, and the LLM call wrapper (Groq, Grok or Claude)."""
 
 import csv
 import json
@@ -10,11 +10,29 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Default model per provider. Override with LLM_MODEL in .env.
-# Model names change over time: if you get "model not found", check the model list
-# in your provider's console and put the exact name in LLM_MODEL.
-DEFAULT_MODELS = {"anthropic": "claude-sonnet-5-5", "xai": "grok-4"}
-XAI_BASE_URL = "https://api.x.ai/v1"
+# Supported providers. Groq and xAI both speak the OpenAI API format.
+# Model names change over time: if you get "model not found", copy an exact name from your
+# provider's console into LLM_MODEL in .env.
+PROVIDERS = {
+    "groq": {
+        "env": "GROQ_API_KEY",
+        "prefix": "gsk_",
+        "model": "llama-3.3-70b-versatile",
+        "base_url": "https://api.groq.com/openai/v1",
+    },
+    "xai": {
+        "env": "XAI_API_KEY",
+        "prefix": "xai-",
+        "model": "grok-4",
+        "base_url": "https://api.x.ai/v1",
+    },
+    "anthropic": {
+        "env": "ANTHROPIC_API_KEY",
+        "prefix": "sk-ant-",
+        "model": "claude-sonnet-5-5",
+        "base_url": None,
+    },
+}
 
 
 def load_env():
@@ -87,29 +105,45 @@ def open_writer(path, fields):
     return f, writer
 
 
+def _find_keys():
+    """Return {provider: key} for every API key set in the environment.
+
+    A key's own prefix wins over the variable it was pasted into, so a Groq key
+    (gsk_...) put in ANTHROPIC_API_KEY is still recognised as a Groq key.
+    """
+    found = {}
+    for name, cfg in PROVIDERS.items():
+        value = os.environ.get(cfg["env"], "").strip()
+        if not value:
+            continue
+        owner = next((n for n, c in PROVIDERS.items() if value.startswith(c["prefix"])), name)
+        found.setdefault(owner, value)
+    return found
+
+
 def _pick_provider():
-    """Returns (provider, api_key). Grok (xAI) or Claude (Anthropic)."""
-    xai_key = os.environ.get("XAI_API_KEY", "").strip()
-    anth_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-
-    # Forgiving: a Grok key pasted into ANTHROPIC_API_KEY is still recognised by its prefix.
-    if not xai_key and anth_key.startswith("xai-"):
-        xai_key, anth_key = anth_key, ""
-
+    """Returns (provider, api_key)."""
+    found = _find_keys()
     wanted = os.environ.get("LLM_PROVIDER", "").strip().lower()
-    if wanted and wanted not in DEFAULT_MODELS:
-        sys.exit(f"LLM_PROVIDER must be 'xai' or 'anthropic', not '{wanted}'.")
 
-    provider = wanted or ("xai" if xai_key else "anthropic" if anth_key else "")
-    if not provider:
+    if wanted:
+        if wanted not in PROVIDERS:
+            sys.exit(f"LLM_PROVIDER must be one of: {', '.join(PROVIDERS)} (not '{wanted}').")
+        if wanted not in found:
+            sys.exit(f"LLM_PROVIDER={wanted} but {PROVIDERS[wanted]['env']} is not set in .env.")
+        return wanted, found[wanted]
+
+    if not found:
         sys.exit(
-            "No API key found. Put XAI_API_KEY (Grok) or ANTHROPIC_API_KEY (Claude) in .env "
+            "No API key found. Put GROQ_API_KEY, XAI_API_KEY or ANTHROPIC_API_KEY in .env "
             "(see .env.example)."
         )
-    key = xai_key if provider == "xai" else anth_key
-    if not key:
-        name = "XAI_API_KEY" if provider == "xai" else "ANTHROPIC_API_KEY"
-        sys.exit(f"LLM_PROVIDER={provider} but {name} is not set in .env.")
+    if len(found) > 1:
+        sys.exit(
+            f"More than one API key is set ({', '.join(found)}). Add a line like "
+            f"LLM_PROVIDER={next(iter(found))} to .env to say which one to use."
+        )
+    provider, key = next(iter(found.items()))
     return provider, key
 
 
@@ -125,42 +159,44 @@ class LLM:
             return
 
         self.provider, key = _pick_provider()
-        self.model = os.environ.get("LLM_MODEL", "").strip() or DEFAULT_MODELS[self.provider]
+        cfg = PROVIDERS[self.provider]
+        self.model = os.environ.get("LLM_MODEL", "").strip() or cfg["model"]
 
-        if self.provider == "xai":
-            try:
-                from openai import OpenAI  # xAI's API is OpenAI-compatible
-            except ImportError:
-                sys.exit("Missing package. Run: pip install -r requirements.txt")
-            self.client = OpenAI(api_key=key, base_url=XAI_BASE_URL)
-        else:
+        if self.provider == "anthropic":
             try:
                 import anthropic
             except ImportError:
                 sys.exit("Missing package. Run: pip install -r requirements.txt")
             self.client = anthropic.Anthropic(api_key=key)
+        else:
+            try:
+                from openai import OpenAI  # Groq and xAI use the OpenAI-compatible API
+            except ImportError:
+                sys.exit("Missing package. Run: pip install -r requirements.txt")
+            self.client = OpenAI(api_key=key, base_url=cfg["base_url"])
 
         print(f"Using {self.provider} model: {self.model}")
 
     def _complete(self, system, user, max_tokens):
-        if self.provider == "xai":
-            resp = self.client.chat.completions.create(
+        if self.provider == "anthropic":
+            resp = self.client.messages.create(
                 model=self.model,
-                # Grok reasoning models spend some tokens thinking, so leave headroom.
-                max_tokens=max(max_tokens, 1500),
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
             )
-            return resp.choices[0].message.content or ""
-        resp = self.client.messages.create(
+            return resp.content[0].text
+        # Grok reasoning models spend some tokens thinking, so leave headroom for them.
+        limit = max(max_tokens, 1500) if self.provider == "xai" else max_tokens
+        resp = self.client.chat.completions.create(
             model=self.model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
+            max_tokens=limit,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         )
-        return resp.content[0].text
+        return resp.choices[0].message.content or ""
 
     def ask_json(self, system, user, fallback, max_tokens=500):
         """Return a parsed JSON dict, or {"_error": "..."} after 3 failed tries."""
@@ -175,13 +211,13 @@ class LLM:
                 if kind in ("AuthenticationError", "PermissionDeniedError"):
                     sys.exit(
                         "The API key was rejected (401/403). Check the key in .env: it must match "
-                        "the provider (Grok keys start with xai-, Claude keys with sk-ant-), have no "
-                        "quotes or spaces, and the account needs API credit."
+                        "the provider (Groq keys start with gsk_, Grok with xai-, Claude with "
+                        "sk-ant-), have no quotes or spaces, and the account must be active."
                     )
-                if kind == "NotFoundError":
+                if kind == "NotFoundError" or (kind == "BadRequestError" and "model" in str(e).lower()):
                     sys.exit(
-                        f"Model '{self.model}' was not found for {self.provider}. Set LLM_MODEL in "
-                        "'.env' to a model name that is listed in your provider's console."
+                        f"Problem with model '{self.model}' on {self.provider}: {e}\n"
+                        "Set LLM_MODEL in .env to a model name listed in your provider's console."
                     )
                 last = e
                 time.sleep(2 * (attempt + 1))

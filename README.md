@@ -14,10 +14,11 @@ pip install -r requirements.txt
 copy .env.example .env        (Windows)   |   cp .env.example .env   (Mac/Linux)
 ```
 
-Open `.env` and fill in **one** key: `XAI_API_KEY` for Grok (key starts with `xai-`) or
-`ANTHROPIC_API_KEY` for Claude (key starts with `sk-ant-`). The provider is picked from whichever
-key is set. If the default model name is rejected as "not found", copy an exact model name from
-your provider's console into `LLM_MODEL` in `.env`.
+Open `.env` and fill in **one** key: `GROQ_API_KEY` (Groq, key starts with `gsk_`),
+`XAI_API_KEY` (Grok, `xai-`) or `ANTHROPIC_API_KEY` (Claude, `sk-ant-`). The provider is picked
+from the key. If you set more than one key, add `LLM_PROVIDER=groq` (or `xai` / `anthropic`).
+If the default model name is rejected, copy an exact model name from your provider's console
+into `LLM_MODEL` in `.env`.
 
 Then edit `profile.json` with your name, what you offer, and your sign-off.
 
