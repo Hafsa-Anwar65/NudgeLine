@@ -1,0 +1,17 @@
+[
+  {
+    "author": "Sample Person A",
+    "url": "https://example.com/post/1",
+    "text": "Looking for someone who can build a simple website for my bakery. Need online ordering if possible. Budget is small."
+  },
+  {
+    "author": "Sample Person B",
+    "url": "https://example.com/post/2",
+    "text": "Mujhe apne clinic ke liye website chahiye, koi achha developer batao please."
+  },
+  {
+    "author": "Sample Person C",
+    "url": "https://example.com/post/3",
+    "text": "Just had the best biryani in town, highly recommend!"
+  }
+]

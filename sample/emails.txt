@@ -1,0 +1,2 @@
+info@example-bakery.com
+owner@example-clinic.com, hello@example-shop.com
