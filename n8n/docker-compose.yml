@@ -1,0 +1,20 @@
+# Start:  docker compose up -d      Open: http://localhost:5678
+# Stop:   docker compose down       (workflows stay saved in the n8n_data volume)
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: nudgeline-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    env_file:
+      - .env                      # your GROQ_API_KEY lives here (never commit it)
+    environment:
+      - GENERIC_TIMEZONE=Asia/Karachi
+      - TZ=Asia/Karachi
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # lets the workflow read GROQ_API_KEY from .env
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./data:/home/node/.n8n-files         # ./data on your laptop = file folder inside n8n
+volumes:
+  n8n_data:

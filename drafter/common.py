@@ -35,6 +35,28 @@ PROVIDERS = {
 }
 
 
+TONES = {
+    "friendly": "warm and friendly",
+    "professional": "polished and professional, but still human",
+    "casual": "relaxed and conversational",
+}
+
+
+def tone_line(profile):
+    return TONES.get(str(profile.get("tone", "friendly")).lower(), TONES["friendly"])
+
+
+# Models that are not chat/writing models (speech, safety classifiers, embeddings...).
+NON_CHAT = ("whisper", "guard", "tts", "orpheus", "safeguard", "embed", "moderation", "playai")
+# Preferred writing models per provider, best first. Used when your account can't use the default.
+PREFERRED = {
+    "groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"],
+    "xai": ["grok-4", "grok-3", "grok-3-mini"],
+}
+# Reasoning models spend tokens thinking before they answer, so they need extra room.
+REASONING_HINTS = ("gpt-oss", "qwen3", "minimax", "deepseek-r1", "grok-4", "grok-3-mini")
+
+
 def load_env():
     """Tiny .env loader so you don't need python-dotenv."""
     env = ROOT / ".env"
@@ -57,6 +79,7 @@ def load_profile(path):
         if not profile.get(key):
             sys.exit(f"profile.json is missing '{key}'")
     profile.setdefault("signoff", profile["name"])
+    profile.setdefault("tone", "friendly")
     profile.setdefault(
         "opt_out_line",
         "If this isn't relevant, just reply 'no' and I won't email again.",
@@ -92,6 +115,23 @@ def done_ids(path, key):
             writer.writerows(good)
         print(f"Removed {len(rows) - len(good)} failed row(s) from {p.name}; they will be retried.")
     return {row.get(key, "") for row in good}
+
+
+def prepare_output(path, fields):
+    """If an old output file has different columns, keep it as <name>.old.csv instead of mixing formats."""
+    p = Path(path)
+    if not p.exists():
+        return
+    with p.open(newline="", encoding="utf-8-sig") as f:
+        header = next(csv.reader(f), [])
+    if header and header != list(fields):
+        backup = p.with_name(p.stem + ".old.csv")
+        n = 1
+        while backup.exists():
+            n += 1
+            backup = p.with_name(f"{p.stem}.old{n}.csv")
+        p.rename(backup)
+        print(f"{p.name} was made by an older version (different columns); moved to {backup.name}. Starting a fresh file.")
 
 
 def open_writer(path, fields):
@@ -150,17 +190,20 @@ def _pick_provider():
 class LLM:
     """Thin wrapper around the provider client. dry_run skips the API entirely."""
 
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, model=None):
         self.dry_run = dry_run
         self.client = None
         self.provider = None
         self.model = None
+        self.explicit_model = False
         if dry_run:
             return
 
         self.provider, key = _pick_provider()
         cfg = PROVIDERS[self.provider]
-        self.model = os.environ.get("LLM_MODEL", "").strip() or cfg["model"]
+        chosen = (model or "").strip() or os.environ.get("LLM_MODEL", "").strip()
+        self.explicit_model = bool(chosen)
+        self.model = chosen or cfg["model"]
 
         if self.provider == "anthropic":
             try:
@@ -177,6 +220,28 @@ class LLM:
 
         print(f"Using {self.provider} model: {self.model}")
 
+    def available_models(self):
+        """Chat-capable model IDs this account can use (OpenAI-compatible providers only)."""
+        if self.dry_run or self.provider == "anthropic":
+            return []
+        ids = [m.id for m in self.client.models.list().data]
+        return sorted(i for i in ids if not any(w in i.lower() for w in NON_CHAT))
+
+    def _switch_model(self):
+        """The chosen model is not available on this account: pick one that is. True if switched."""
+        try:
+            chat = self.available_models()
+        except Exception:
+            return False
+        order = [m for m in PREFERRED.get(self.provider, []) if m in chat] + [m for m in chat if m != self.model]
+        order = [m for m in order if m != self.model]
+        if not order:
+            return False
+        print(f"Model '{self.model}' is not available on your {self.provider} account. Using '{order[0]}' instead "
+              f"(set LLM_MODEL in .env to choose another).")
+        self.model = order[0]
+        return True
+
     def _complete(self, system, user, max_tokens):
         if self.provider == "anthropic":
             resp = self.client.messages.create(
@@ -187,7 +252,8 @@ class LLM:
             )
             return resp.content[0].text
         # Grok reasoning models spend some tokens thinking, so leave headroom for them.
-        limit = max(max_tokens, 1500) if self.provider == "xai" else max_tokens
+        thinking = self.provider == "xai" or any(h in self.model.lower() for h in REASONING_HINTS)
+        limit = max(max_tokens, 2000) if thinking else max_tokens
         resp = self.client.chat.completions.create(
             model=self.model,
             max_tokens=limit,
@@ -215,6 +281,8 @@ class LLM:
                         "sk-ant-), have no quotes or spaces, and the account must be active."
                     )
                 if kind == "NotFoundError" or (kind == "BadRequestError" and "model" in str(e).lower()):
+                    if not self.explicit_model and self._switch_model():
+                        continue
                     sys.exit(
                         f"Problem with model '{self.model}' on {self.provider}: {e}\n"
                         "Set LLM_MODEL in .env to a model name listed in your provider's console."

@@ -8,7 +8,8 @@ import sys
 import time
 from pathlib import Path
 
-from .common import done_ids, open_writer
+from . import quality
+from .common import done_ids, open_writer, prepare_output, tone_line
 
 # Field names looked up in your fetched posts. Add your own key names if they differ.
 TEXT_KEYS = ("text", "post_text", "content", "message", "body", "post")
@@ -24,9 +25,24 @@ STYLE_HINTS = [
 ]
 
 OUTPUT_FIELDS = [
-    "post_id", "post_url", "author", "post_text", "relevant",
-    "comment", "reason", "status",
+    "post_id", "priority", "intent_score", "language", "post_url", "author", "post_text",
+    "relevant", "comment", "reason", "qa_flags", "status",
 ]
+
+
+def interpret(res):
+    """Turn the model's JSON into clean fields. Returns a dict, or {"error": msg}."""
+    if "_error" in res:
+        return {"error": res["_error"]}
+    relevant = bool(res.get("relevant"))
+    comment = (res.get("comment") or "").strip() if relevant else ""
+    intent = quality.clamp_intent(res.get("intent_score"))
+    flags = quality.comment_flags(comment)
+    return {
+        "relevant": relevant, "comment": comment, "reason": res.get("reason", ""),
+        "intent": intent, "language": str(res.get("language") or ""),
+        "priority": quality.priority(intent, bool(comment)), "flags": flags,
+    }
 
 
 def pick(d, keys):
@@ -85,7 +101,7 @@ Write ONE comment per post that sounds like a real, helpful person, not a market
 Rules:
 - 1 to 3 short sentences, ideally under 40 words.
 - Mention a specific detail from the post so it is clearly a reply to THIS post.
-- Match the language and tone of the post (English, Urdu written in Roman script, or a mix).
+- Match the language of the post (English, Urdu written in Roman script, or a mix). Your own tone: {tone_line(profile)}.
 - Be helpful first: a tip, a useful question, or encouragement. Only invite a DM if the post clearly asks for someone to provide the service.
 - No links, phone numbers, hashtags, or sales slogans. At most one emoji, and only if it fits naturally.
 - Be honest. Do not claim experiences you cannot know, do not pretend to be a customer, and do not invent results or prices.
@@ -93,11 +109,12 @@ Rules:
 - If the post is not a genuine need or not related to {service}, mark it not relevant and write no comment.
 
 Reply with ONLY a JSON object, nothing else:
-{{"relevant": true or false, "comment": "the comment text or empty string", "reason": "one short line on why"}}"""
+{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = barely related), "language": "English|Urdu|Roman Urdu|Mixed|Other", "comment": "the comment text or empty string", "reason": "one short line on why"}}"""
 
 
 def run(args, profile, llm):
     posts = load_posts(args.input)
+    prepare_output(args.output, OUTPUT_FIELDS)
     done = done_ids(args.output, "post_id")
     todo = [p for p in posts if p["post_id"] not in done]
     if args.limit:
@@ -121,16 +138,23 @@ def run(args, profile, llm):
             }
             res = llm.ask_json(system, user_msg, fallback, max_tokens=400)
 
-            if "_error" in res:
-                relevant, comment, reason, status = False, "", f"error: {res['_error']}", "error"
+            info = interpret(res)
+            if "error" in info:
+                info = {"relevant": False, "comment": "", "reason": f"error: {info['error']}", "intent": 0,
+                        "language": "", "priority": "", "flags": []}
+                status = "error"
+            elif not info["comment"]:
+                status = "skipped"
             else:
-                relevant = bool(res.get("relevant"))
-                comment = (res.get("comment") or "").strip() if relevant else ""
-                reason = res.get("reason", "")
-                status = "draft" if comment else "skipped"
+                status = "needs_edit" if info["flags"] else "draft"
+            relevant, comment, reason = info["relevant"], info["comment"], info["reason"]
 
             writer.writerow({
                 "post_id": post["post_id"],
+                "priority": info["priority"],
+                "intent_score": info["intent"] or "",
+                "language": info["language"],
+                "qa_flags": "; ".join(info["flags"]),
                 "post_url": post["post_url"],
                 "author": post["author"],
                 "post_text": post["post_text"][:500].replace("\n", " "),
@@ -144,4 +168,8 @@ def run(args, profile, llm):
             if not llm.dry_run:
                 time.sleep(args.gap)
 
-    print(f"Done. Review {args.output}, edit anything you like, then post manually.")
+    from . import review
+    review.sort_by_priority(args.output)
+    page = review.write_html(args.output)
+    print(f"Done. Open {page} to review, edit {args.output} if needed, then run:")
+    print(f'  python main.py approve --input "{args.output}"')

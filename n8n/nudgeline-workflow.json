@@ -1,0 +1,699 @@
+{
+  "name": "Nudgeline: comment + email drafts (human review)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. INPUT\nForm -> settings -> read your CSV -> clean rows (columns matched loosely, duplicates removed).",
+        "width": 1190,
+        "height": 120,
+        "color": 4
+      },
+      "id": "1bbbc476-c4e0-4a3e-a6d7-c616fbae8b07",
+      "name": "Note: 1. INPUT",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        130
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. AI DRAFTING\nGroq (Llama) writes one comment + one email per row. Key is read from .env. Calls retry 3x; one failure never stops the run.",
+        "width": 700,
+        "height": 120,
+        "color": 5
+      },
+      "id": "3d128f08-5f03-452a-a6b7-76bd20906cb5",
+      "name": "Note: 2. AI DRAFTING",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1130,
+        130
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. QUALITY + SAVE\nAuto-checks (length, links, spam words, invented numbers, leftover placeholders), priority scoring, then save drafts.",
+        "width": 1020,
+        "height": 120,
+        "color": 3
+      },
+      "id": "957c818f-c855-4a55-a89a-1afea66624f5",
+      "name": "Note: 3. QUALITY + SAVE",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1470,
+        130
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. HUMAN REVIEW (required)\nNothing is exported until you approve. Only rows with status = draft go to outreach_approved.csv.",
+        "width": 1350,
+        "height": 120,
+        "color": 6
+      },
+      "id": "8b76035d-c7e3-47c9-9f56-90883977f281",
+      "name": "Note: 4. HUMAN REVIEW (required)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2330,
+        130
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Nudgeline",
+        "formDescription": "Fill what you like, or press Submit to use the defaults.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Your name",
+              "placeholder": "Hafsa (used for sign-off)"
+            },
+            {
+              "fieldLabel": "Service you offer",
+              "placeholder": "website development"
+            },
+            {
+              "fieldLabel": "About you (one line)",
+              "placeholder": "I build business websites and landing pages for small businesses."
+            },
+            {
+              "fieldLabel": "Tone",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Friendly"
+                  },
+                  {
+                    "option": "Professional"
+                  },
+                  {
+                    "option": "Casual"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Email template (optional)",
+              "fieldType": "textarea",
+              "placeholder": "Leave empty for AI-written emails. Or paste a template using {first_name} {name} {company} {post_hook}"
+            },
+            {
+              "fieldLabel": "Rows to process",
+              "fieldType": "number",
+              "placeholder": "5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3ef0ab01-267f-4204-836e-7195a37d07dc",
+      "name": "Start form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "59aa791b-6201-43e4-b334-a03d5d6b5eb1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1) Read the start form, apply defaults. 2) Build both system prompts once.\nconst f = $input.first().json;\nconst g = (k, d) => { const v = (f[k] === undefined || f[k] === null) ? '' : String(f[k]).trim(); return v || d; };\nconst name = g('Your name', 'Hafsa');\nconst service = g('Service you offer', 'website development');\nconst about = g('About you (one line)', 'I build business websites and landing pages for small businesses.');\nconst tone = g('Tone', 'Friendly');\nconst template = g('Email template (optional)', '');\nconst limit = Math.min(Math.max(parseInt(g('Rows to process', '5'), 10) || 5, 1), 200);\nconst model = ($env.GROQ_MODEL || 'llama-3.3-70b-versatile');\nconst toneLine = { Friendly: 'warm and friendly', Professional: 'polished and professional, but still human', Casual: 'relaxed and conversational' }[tone] || 'warm and friendly';\n\nconst commentSystem = `You write ONE short Facebook comment replying to a person's post, for ${name}, who offers: ${service}. ${about}\nRules:\n- 1 to 3 sentences. Sound like a real person, not a company. Tone: ${toneLine}.\n- Refer to a specific detail from the post. Add something useful or friendly; do not pitch or sell.\n- Match the post's language exactly (English, Urdu, Roman Urdu, or mixed).\n- No links, no hashtags, at most one emoji, no hype, no exclamation overload.\n- Never invent facts. Only offer what ${name} actually does.\n- If the post is not a genuine need ${name} could help with, set relevant to false.\n- intent_score: 1 to 5, how clearly the author is asking for what ${name} offers right now (5 = explicitly asking for it, 1 = barely related).\nReply with ONLY a JSON object: {\"relevant\": true or false, \"intent_score\": 1-5, \"language\": \"English|Urdu|Roman Urdu|Mixed|Other\", \"comment\": \"...\", \"reason\": \"one short line\"}`;\n\nconst freeEmail = `You write ONE short personalized outreach email for ${name}, who offers: ${service}. ${about}\nRules:\n- Subject: 3 to 7 words, plain, specific. No clickbait, no ALL CAPS.\n- Body: 60 to 110 words, at most 2 short paragraphs. Start with \"Hi <first name>,\" (or \"Hi there,\" if no name). Tone: ${toneLine}.\n- Do NOT write a signature or an unsubscribe line; they are added automatically.\n- Use ONLY the facts given. Never invent results, numbers, connections, prices or things you \"noticed\".\n- Open with what they asked or talked about in their public post (do not quote it word for word), as the natural reason for writing.\n- One sentence on what ${name} can help with, then exactly one small low-pressure ask.\n- No hype, no buzzwords, no exclamation marks, no emojis.\n- Write in the language of their post if it is not English.\nReply with ONLY a JSON object: {\"subject\": \"...\", \"body\": \"...\"}`;\n\nconst tplEmail = `You personalize an email TEMPLATE for ${name}, who offers: ${service}.\nThe template below is the email. Keep its wording, tone, line breaks and structure EXACTLY.\nYour only job is to fill the placeholders:\n- {first_name} = the lead's first name (or \"there\" if unknown)\n- {name} = the lead's full name (or \"there\" if unknown)\n- {company} = the lead's business name (omit gracefully if unknown)\n- {post_hook} = ONE natural sentence about what they asked or talked about in their public post (not a word-for-word quote, in the post's language, using only facts given)\nDo not add, remove or rewrite anything else. Do not invent facts.\nIf the template's first line starts with \"Subject:\", put that line (without \"Subject:\") in \"subject\" and remove it from the body. Otherwise write a plain 3 to 7 word subject.\nDo not add a sign-off or unsubscribe line; the template already has its own.\nTEMPLATE:\n\"\"\"\n${template}\n\"\"\"\nReply with ONLY a JSON object: {\"subject\": \"...\", \"body\": \"...\"}`;\n\nreturn [{ json: { name, service, about, tone, template, limit, model, commentSystem,\n  emailSystem: template ? tplEmail : freeEmail, signoff: name,\n  optOut: \"If this isn't relevant, just reply 'no' and I won't email again.\" } }];"
+      },
+      "id": "1649ca35-69f7-4901-bf05-73d410b2cd12",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        230,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/home/node/.n8n-files/old_data.csv",
+        "options": {}
+      },
+      "id": "c3d0b10c-b177-4411-a01d-579794113971",
+      "name": "Read CSV file",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "015fd907-9df8-4c9c-910e-14d770506456",
+      "name": "Extract rows",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map your columns (Post Content, Business Name, Owner Name, Email) to fixed fields, drop empties, dedupe, limit.\nconst S = $('Settings').first().json;\nconst pick = (r, names) => { for (const k of Object.keys(r)) { if (names.includes(k.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')) && r[k]) return String(r[k]).trim(); } return ''; };\nconst seen = new Set(); const out = []; let dropped = 0;\nfor (const i of $input.all()) {\n  const rec = {\n    post: pick(i.json, ['post_content','post','post_text','content','notes','message','text']),\n    company: pick(i.json, ['business_name','company','company_name','business','page_name']),\n    owner: pick(i.json, ['owner_name','owner','name','contact','contact_name','full_name']),\n    email: pick(i.json, ['email','e_mail','email_address','owner_email','business_email']).toLowerCase(),\n  };\n  rec.first = (rec.owner.replace(/^(dr|mr|mrs|ms|miss|engr|prof|sir)\\.?\\s+/i, '').split(/\\s+/)[0] || '');\n  if (!rec.post && !rec.email) { dropped++; continue; }\n  const key = rec.email + '|' + rec.post.slice(0, 200) + '|' + rec.company;\n  if (seen.has(key)) { dropped++; continue; } seen.add(key);\n  out.push({ json: rec });\n  if (out.length >= S.limit) break;\n}\nif (!out.length) throw new Error('No usable rows found. Check the column names in data/old_data.csv (need at least post content or email).');\nreturn out;"
+      },
+      "id": "3da0dcb2-76dd-4c89-8b5c-cf673098dfc7",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Settings').first().json.model, temperature: 0.7, max_tokens: 450, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Settings').first().json.commentSystem }, { role: 'user', content: 'Post author: ' + ($('Normalize').item.json.owner || 'unknown') + '\\nPost text:\\n' + ($('Normalize').item.json.post || '(no post text)').slice(0, 2000) } ] }) }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          }
+        }
+      },
+      "id": "d3651ee8-648f-4ba6-8ce6-2bb251d31437",
+      "name": "Draft comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1150,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Settings').first().json.model, temperature: 0.7, max_tokens: 700, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Settings').first().json.emailSystem }, { role: 'user', content: 'Lead details:\\n- Name: ' + ($('Normalize').item.json.owner || 'unknown') + '\\n- First name: ' + ($('Normalize').item.json.first || 'there') + '\\n- Company: ' + ($('Normalize').item.json.company || 'unknown') + '\\n- Their public post: ' + ($('Normalize').item.json.post || '(none)').slice(0, 1200) } ] }) }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1500
+            }
+          }
+        }
+      },
+      "id": "206fc409-6d59-4cb6-af6a-6946ee2722f3",
+      "name": "Draft email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1380,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI output, run quality checks, assign priority and status. Nothing is sent anywhere.\nconst S = $('Settings').first().json;\nconst EMAIL_RE = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/;\nconst parse = (r) => { try { return JSON.parse(r.choices[0].message.content); } catch (e) { return null; } };\nconst base = $('Normalize').all(), cm = $('Draft comment').all(), em = $('Draft email').all();\nconst SPAM = /(guarantee[d]?|100%|act now|limited time|click here|urgent|winner|risk[- ]free|no obligation|buy now|cheap|earn money)/i;\nconst PH = /\\{\\s*[a-z_ ]+\\s*\\}/i;\nconst emojis = (s) => (s.match(/\\p{Extended_Pictographic}/gu) || []).length;\n\nconst rows = base.map((b, i) => {\n  const r = b.json, c = parse(cm[i].json), e = parse(em[i].json);\n  const hasPost = !!r.post, validEmail = EMAIL_RE.test(r.email);\n  let comment = '', comment_note = '', subject = '', body = '', email_note = '', failed = false;\n  let intent = 0, language = '';\n  const flags = [];\n\n  if (!hasPost) comment_note = 'no post text';\n  else if (!c) { comment_note = 'error: bad or empty response'; failed = true; }\n  else {\n    intent = Math.min(5, Math.max(0, parseInt(c.intent_score, 10) || 0));\n    language = String(c.language || '');\n    if (c.relevant) {\n      comment = String(c.comment || '').trim(); comment_note = c.reason || '';\n      if (!comment) { failed = true; comment_note = 'error: empty comment'; }\n    } else comment_note = 'skipped: ' + (c.reason || 'not relevant');\n  }\n  if (comment) {\n    if (comment.length > 320) flags.push('comment too long');\n    if ((comment.match(/[.!?\u06d4\u061f]+(\\s|$)/g) || []).length > 3) flags.push('comment over 3 sentences');\n    if (/https?:\\/\\/|www\\./i.test(comment)) flags.push('link in comment');\n    if (/#\\w/.test(comment)) flags.push('hashtag in comment');\n    if (emojis(comment) > 1) flags.push('too many emojis');\n    if (PH.test(comment)) flags.push('placeholder left in comment');\n    if (SPAM.test(comment)) flags.push('salesy words in comment');\n  }\n\n  if (!validEmail) email_note = 'no valid email, email draft skipped';\n  else if (!e || !e.body) { email_note = 'error: bad or empty response'; failed = true; }\n  else {\n    subject = String(e.subject || '').trim();\n    body = String(e.body).trim();\n    const words = body.split(/\\s+/).length;\n    if (!subject) flags.push('empty subject');\n    if (subject.length > 70) flags.push('subject too long');\n    if (/[A-Z]/.test(subject) && subject === subject.toUpperCase()) flags.push('subject in ALL CAPS');\n    if (PH.test(body) || PH.test(subject)) flags.push('placeholder left in email');\n    if (SPAM.test(body) || SPAM.test(subject)) flags.push('spam words in email');\n    if (!S.template) {\n      if (words < 40 || words > 140) flags.push('email length ' + words + ' words');\n      if ((body.match(/!/g) || []).length > 1) flags.push('exclamation marks in email');\n      const src = (r.post + ' ' + r.company + ' ' + r.owner);\n      const bad = (body.match(/\\d[\\d,.]*/g) || []).filter(n => !src.includes(n));\n      if (bad.length) flags.push('number not in source: ' + bad.slice(0, 2).join(','));\n    }\n    body += S.template ? ('\\n\\n' + S.optOut) : ('\\n\\n' + S.signoff + '\\n\\n' + S.optOut);\n  }\n  const priority = !comment ? '' : (intent >= 4 ? 'high' : intent === 3 ? 'medium' : 'low');\n  const status = failed ? 'error' : (flags.length ? 'needs_edit' : ((comment || body) ? 'draft' : 'skipped'));\n  return { json: { priority, intent_score: intent || '', language, company: r.company, owner: r.owner, email: r.email,\n    post: r.post.slice(0, 300), comment, comment_note, subject, body, email_note, qa_flags: flags.join('; '), status } };\n});\nconst rank = { high: 0, medium: 1, low: 2, '': 3 };\nrows.sort((a, b) => (rank[a.json.priority] - rank[b.json.priority]) || ((b.json.intent_score || 0) - (a.json.intent_score || 0)));\nreturn rows;"
+      },
+      "id": "c1e5c59c-5412-4ecd-8cdb-f6ca8639a9a7",
+      "name": "Build result row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1610,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {
+          "fileName": "outreach_drafts.csv"
+        }
+      },
+      "id": "68704eef-7604-4760-be1a-903bfb73a265",
+      "name": "Drafts to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/home/node/.n8n-files/outreach_drafts.csv",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "9a6c9435-3c17-4d14-aa65-c4d14bbb53e8",
+      "name": "Save outreach_drafts.csv",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2070,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst rows = $('Build result row').all().map(i => i.json);\nconst tokens = [...$('Draft comment').all(), ...$('Draft email').all()].reduce((t, i) => t + ((i.json.usage && i.json.usage.total_tokens) || 0), 0);\nconst count = (s) => rows.filter(r => r.status === s).length;\nconst color = { draft: '#1a9d5c', needs_edit: '#d9a300', error: '#d33', skipped: '#888' };\nconst chip = (t, c) => `<span style=\"background:${c};color:#fff;border-radius:99px;padding:2px 9px;font-size:12px;margin-right:6px\">${t}</span>`;\nconst cards = rows.map((r, n) => `<div style=\"border:1px solid #8884;border-left:5px solid ${color[r.status] || '#888'};border-radius:8px;padding:10px 12px;margin:10px 0;text-align:left\">\n<div><b>#${n+1} ${esc(r.company || r.owner || r.email)}</b> ${chip(esc(r.status), color[r.status] || '#888')}${r.priority ? chip('priority: ' + esc(r.priority), '#555') : ''}${r.language ? chip(esc(r.language), '#777') : ''}</div>\n${r.qa_flags ? `<div style=\"color:#b57d00;margin-top:4px\">&#9888; ${esc(r.qa_flags)}</div>` : ''}\n<div style=\"margin-top:6px\"><b>Post:</b> ${esc(r.post)}</div>\n<div style=\"margin-top:4px\"><b>Comment:</b> ${esc(r.comment) || '<i>' + esc(r.comment_note) + '</i>'}</div>\n<div style=\"margin-top:4px\"><b>Subject:</b> ${esc(r.subject) || '<i>' + esc(r.email_note) + '</i>'}</div>\n${r.body ? `<div style=\"margin-top:4px\"><b>Email:</b><div style=\"white-space:pre-wrap\">${esc(r.body)}</div></div>` : ''}</div>`).join('');\nconst html = `<p>${chip(count('draft') + ' ready', color.draft)}${chip(count('needs_edit') + ' need edit', color.needs_edit)}${chip(count('error') + ' errors', color.error)}${chip(count('skipped') + ' skipped', color.skipped)} <small>&middot; ${tokens} tokens used</small></p>\n<p>Drafts are saved in <code>outreach_drafts.csv</code>. To change a row: edit the CSV, set its <b>status</b> to <code>draft</code> (approve) or anything else (leave out), save and close the file, then choose below. <b>Only rows with status <code>draft</code> are exported.</b> Nothing has been posted or sent.</p>` + cards;\nreturn [{ json: { reviewHtml: html, total: rows.length, ready: count('draft') } }];"
+      },
+      "id": "c6d213ac-8c49-479a-a60b-b55af44196f0",
+      "name": "Prepare review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Review drafts",
+        "formDescription": "={{ $json.reviewHtml }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approve"
+                  },
+                  {
+                    "option": "Reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "647a2468-2e68-4899-a820-3ec5b126f561",
+      "name": "HUMAN REVIEW",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2530,
+        300
+      ],
+      "webhookId": "0f27c0a2-30fd-4687-aea4-3c790a6975a9"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.Decision }}",
+              "value2": "Approve"
+            }
+          ]
+        }
+      },
+      "id": "5036a4e9-a420-4b3b-ba76-9a6dc54d1c23",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/home/node/.n8n-files/outreach_drafts.csv",
+        "options": {}
+      },
+      "id": "bff78cf1-2402-4333-842f-a2f5ef8cf1e2",
+      "name": "Re-read edited drafts",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2990,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "02a22382-2044-4ffa-b106-c2dd4ee7f291",
+      "name": "Extract edited rows",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        3220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json).filter(r => String(r.status).trim().toLowerCase() === 'draft');\nif (!rows.length) throw new Error('No rows with status \"draft\" in outreach_drafts.csv. Set status to draft for the rows you approve.');\nconst at = new Date().toISOString();\nreturn rows.map(r => ({ json: { ...r, status: 'approved', reviewed_at: at } }));"
+      },
+      "id": "30d1ed39-81f0-400c-8e88-1f6737b0f255",
+      "name": "Keep approved",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3450,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {
+          "fileName": "outreach_approved.csv"
+        }
+      },
+      "id": "3152ff55-3744-4084-8954-266ac7b6cd82",
+      "name": "Approved to CSV",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        3680,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/home/node/.n8n-files/outreach_approved.csv",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "3f018ab4-652a-4bf1-bce3-cef9669de84b",
+      "name": "Save outreach_approved.csv",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        3910,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only rows that have a recipient and an email body can become Gmail drafts.\nreturn $input.all().filter(i => i.json.email && i.json.body);"
+      },
+      "id": "f59da5f4-66a3-4177-b059-49b9e2868d72",
+      "name": "OPTIONAL: rows with email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        330
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "sendTo": "={{ $json.email }}"
+        }
+      },
+      "id": "7350981e-2b7f-4d6b-9cec-1501362817ac",
+      "name": "OPTIONAL: Gmail draft (not send)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3910,
+        330
+      ],
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "Start form": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Read CSV file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CSV file": {
+      "main": [
+        [
+          {
+            "node": "Extract rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract rows": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Draft comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft comment": {
+      "main": [
+        [
+          {
+            "node": "Draft email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft email": {
+      "main": [
+        [
+          {
+            "node": "Build result row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build result row": {
+      "main": [
+        [
+          {
+            "node": "Drafts to CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drafts to CSV": {
+      "main": [
+        [
+          {
+            "node": "Save outreach_drafts.csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save outreach_drafts.csv": {
+      "main": [
+        [
+          {
+            "node": "Prepare review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare review": {
+      "main": [
+        [
+          {
+            "node": "HUMAN REVIEW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HUMAN REVIEW": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Re-read edited drafts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Re-read edited drafts": {
+      "main": [
+        [
+          {
+            "node": "Extract edited rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract edited rows": {
+      "main": [
+        [
+          {
+            "node": "Keep approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep approved": {
+      "main": [
+        [
+          {
+            "node": "Approved to CSV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OPTIONAL: rows with email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved to CSV": {
+      "main": [
+        [
+          {
+            "node": "Save outreach_approved.csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OPTIONAL: rows with email": {
+      "main": [
+        [
+          {
+            "node": "OPTIONAL: Gmail draft (not send)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -3,8 +3,8 @@
 
 import argparse
 
-from drafter import both, comments, emails
-from drafter.common import ROOT, LLM, load_env, load_profile
+from drafter import both, comments, emails, review
+from drafter.common import ROOT, TONES, LLM, load_env, load_profile
 
 
 def build_parser():
@@ -14,6 +14,7 @@ def build_parser():
     common.add_argument("--profile", default=str(ROOT / "profile.json"), help="your profile.json")
     common.add_argument("--limit", type=int, default=0, help="max items to process (0 = all)")
     common.add_argument("--gap", type=float, default=1.0, help="seconds between API calls")
+    common.add_argument("--tone", choices=sorted(TONES), help="writing tone (default: from profile.json, else friendly)")
     common.add_argument("--dry-run", action="store_true", help="test the pipeline without calling the API")
 
     ap = argparse.ArgumentParser(description="Nudgeline: draft comments and personalized emails.")
@@ -27,6 +28,7 @@ def build_parser():
         "emails", parents=[common],
         help="draft personalized emails from a list of emails (TXT or CSV)",
     )
+    e.add_argument("--template", help="text file with your own email template ({first_name} {name} {company} {post_hook})")
     e.add_argument(
         "--fetch-sites", action="store_true",
         help="fetch each lead's homepage (plain HTTP, one request) for extra personalization",
@@ -35,15 +37,25 @@ def build_parser():
         "both", parents=[common],
         help="one run, two drafts per row: a comment on the post AND an email (CSV, XLSX or JSON)",
     )
+    b.add_argument("--template", help="text file with your own email template ({first_name} {name} {company} {post_hook})")
     b.add_argument(
         "--fetch-sites", action="store_true",
         help="also read each business website (needs a website column)",
     )
+    a = sub.add_parser(
+        "approve", help="human review step: export only the drafts you approve to *_approved.csv",
+    )
+    a.add_argument("--input", required=True, help="the CSV made by comments / emails / both")
+    a.add_argument("--output", help="approved CSV (default: <input>_approved.csv)")
+    a.add_argument("--interactive", action="store_true", help="go through the drafts one by one (y/n)")
     return ap
 
 
 def main():
     args = build_parser().parse_args()
+    if args.cmd == "approve":
+        review.approve(args)
+        return
     load_env()
     if not args.output:
         name = "outreach" if args.cmd == "both" else args.cmd
@@ -51,6 +63,8 @@ def main():
             name += "_dryrun"
         args.output = str(ROOT / "output" / f"{name}.csv")
     profile = load_profile(args.profile)
+    if args.tone:
+        profile["tone"] = args.tone
     llm = LLM(dry_run=args.dry_run)
 
     if args.cmd == "comments":

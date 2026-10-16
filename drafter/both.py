@@ -13,12 +13,12 @@ import sys
 import time
 from pathlib import Path
 
-from . import comments, emails
-from .common import done_ids, open_writer
+from . import comments, emails, quality, review
+from .common import done_ids, open_writer, prepare_output
 
 OUTPUT_FIELDS = [
-    "id", "name", "company", "email", "post_url", "post_text",
-    "comment", "comment_note", "subject", "body", "personalization", "angle", "status",
+    "id", "priority", "intent_score", "language", "name", "company", "email", "post_url", "post_text",
+    "comment", "comment_note", "subject", "body", "personalization", "angle", "qa_flags", "status",
 ]
 
 EMAIL_EXTRA_RULE = (
@@ -88,27 +88,35 @@ def load_records(path):
 
 
 def run(args, profile, llm):
+    template = emails.load_template(getattr(args, "template", None))
     records = load_records(args.input)
+    prepare_output(args.output, OUTPUT_FIELDS)
     done = done_ids(args.output, "id")
     todo = [r for r in records if r["id"] not in done]
     if args.limit:
         todo = todo[: args.limit]
     print(f"{len(records)} rows loaded, {len(done)} already done, {len(todo)} to process.")
+    if template:
+        print("Using your email template: the AI only fills the placeholders.")
 
     comment_system = comments.build_system_prompt(profile)
-    email_system = emails.build_system_prompt(profile) + EMAIL_EXTRA_RULE
+    email_system = emails.make_system(profile, template)
+    if not template:
+        email_system += EMAIL_EXTRA_RULE
 
     f, writer = open_writer(args.output, OUTPUT_FIELDS)
     with f:
         for i, rec in enumerate(todo, 1):
             row = {
-                "id": rec["id"], "name": rec["name"], "company": rec["company"],
+                "id": rec["id"], "priority": "", "intent_score": "", "language": "",
+                "name": rec["name"], "company": rec["company"],
                 "email": rec["email"], "post_url": rec["post_url"],
                 "post_text": rec["notes"][:500].replace("\n", " "),
                 "comment": "", "comment_note": "", "subject": "", "body": "",
-                "personalization": "", "angle": "", "status": "",
+                "personalization": "", "angle": "", "qa_flags": "", "status": "",
             }
             failed = False
+            flags = []
 
             # 1) Comment on the post
             if rec["notes"]:
@@ -119,19 +127,25 @@ def run(args, profile, llm):
                     f"Post text:\n{rec['notes'][:2000]}"
                 )
                 fallback = {
-                    "relevant": True,
+                    "relevant": True, "intent_score": 3, "language": "English",
                     "comment": "[dry-run] a drafted comment would appear here",
                     "reason": "dry run, no API call made",
                 }
-                res = llm.ask_json(comment_system, user_msg, fallback, max_tokens=400)
-                if "_error" in res:
+                info = comments.interpret(llm.ask_json(comment_system, user_msg, fallback, max_tokens=450))
+                if "error" in info:
                     failed = True
-                    row["comment_note"] = f"error: {res['_error']}"
-                elif res.get("relevant"):
-                    row["comment"] = (res.get("comment") or "").strip()
-                    row["comment_note"] = res.get("reason", "")
+                    row["comment_note"] = f"error: {info['error']}"
                 else:
-                    row["comment_note"] = "skipped: " + (res.get("reason") or "not relevant")
+                    row["priority"], row["language"] = info["priority"], info["language"]
+                    row["intent_score"] = info["intent"] or ""
+                    flags += info["flags"]
+                    if info["relevant"] and info["comment"]:
+                        row["comment"], row["comment_note"] = info["comment"], info["reason"]
+                    elif info["relevant"]:
+                        failed = True
+                        row["comment_note"] = "error: empty comment"
+                    else:
+                        row["comment_note"] = "skipped: " + (info["reason"] or "not relevant")
             else:
                 row["comment_note"] = "no post text"
 
@@ -147,19 +161,27 @@ def run(args, profile, llm):
                     "angle": "dry run, no API call made",
                 }
                 message = emails.build_user_message(rec, site, notes_label="Their public post")
-                res = llm.ask_json(email_system, message, fallback, max_tokens=600)
+                res = llm.ask_json(email_system, message, fallback, max_tokens=700)
                 if "_error" in res or not res.get("body"):
                     failed = True
                     row["angle"] = f"error: {res.get('_error', 'empty response')}"
                 else:
-                    row["subject"] = (res.get("subject") or "").strip()
-                    row["body"] = f"{res['body'].strip()}\n\n{profile['signoff']}\n\n{profile['opt_out_line']}"
+                    source = " ".join([rec["name"], rec["company"], rec["notes"], site])
+                    subject, full_body, email_flags = emails.finish_email(res, profile, source, template)
+                    row["subject"], row["body"] = subject, full_body
                     row["personalization"] = res.get("personalization", "")
                     row["angle"] = res.get("angle", "")
+                    flags += email_flags
             else:
                 row["angle"] = "no valid email, email draft skipped"
 
-            row["status"] = "error" if failed else ("draft" if (row["comment"] or row["body"]) else "skipped")
+            row["qa_flags"] = "; ".join(flags)
+            if failed:
+                row["status"] = "error"
+            elif flags:
+                row["status"] = "needs_edit"
+            else:
+                row["status"] = "draft" if (row["comment"] or row["body"]) else "skipped"
             writer.writerow(row)
             f.flush()
             label = rec["company"] or rec["name"] or rec["email"] or rec["id"]
@@ -167,4 +189,8 @@ def run(args, profile, llm):
             if not llm.dry_run:
                 time.sleep(args.gap)
 
-    print(f"Done. Open {args.output}: edit the drafts, then post and send them yourself.")
+    review.sort_by_priority(args.output)
+    page = review.write_html(args.output)
+    print(f"Done. Open {page} to review the drafts.")
+    print("Edit the CSV if you like (set status to 'draft' for rows you approve), then run:")
+    print(f'  python main.py approve --input "{args.output}"')

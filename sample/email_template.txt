@@ -1,0 +1,10 @@
+Subject: Quick idea for {company}
+
+Hi {first_name},
+
+{post_hook}
+
+I build simple, fast websites for small businesses. If it helps, I can send two or three ideas for yours, no obligation.
+
+Best,
+Hafsa

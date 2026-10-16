@@ -7,7 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-from .common import done_ids, open_writer
+from . import quality
+from .common import done_ids, open_writer, prepare_output, tone_line
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -32,8 +33,63 @@ def norm_key(key):
 
 OUTPUT_FIELDS = [
     "email", "name", "company", "website", "subject", "body",
-    "personalization", "angle", "status",
+    "personalization", "angle", "qa_flags", "status",
 ]
+
+TITLE_RE = re.compile(r"^(dr|mr|mrs|ms|miss|engr|prof|sir)\.?\s+", re.I)
+
+
+def first_name(full):
+    parts = TITLE_RE.sub("", (full or "").strip()).split()
+    return parts[0] if parts else ""
+
+
+def load_template(path):
+    """Read your own email template (a text file). Placeholders: {first_name} {name} {company} {post_hook}."""
+    if not path:
+        return ""
+    p = Path(path)
+    if not p.exists():
+        sys.exit(f"Template file not found: {path}")
+    text = p.read_text(encoding="utf-8").strip()
+    if not text:
+        sys.exit(f"Template file is empty: {path}")
+    return text
+
+
+def build_template_prompt(profile, template):
+    name, service = profile["name"], profile["service"]
+    return f"""You personalize an email TEMPLATE for {name}, who offers: {service}.
+The template below is the email. Keep its wording, tone, line breaks and structure EXACTLY.
+Your only job is to fill the placeholders:
+- {{first_name}} = the lead's first name (or "there" if unknown)
+- {{name}} = the lead's full name (or "there" if unknown)
+- {{company}} = the lead's business name (omit gracefully if unknown)
+- {{post_hook}} = ONE natural sentence about what they asked or talked about in their public post (not a word-for-word quote, in the post's language, using only facts given)
+Do not add, remove or rewrite anything else. Do not invent facts.
+If the template's first line starts with "Subject:", put that line (without "Subject:") in "subject" and remove it from the body. Otherwise write a plain 3 to 7 word subject.
+Do not add a sign-off or unsubscribe line; the template already has its own.
+
+TEMPLATE:
+\"\"\"
+{template}
+\"\"\"
+
+Reply with ONLY a JSON object, nothing else:
+{{"subject": "...", "body": "...", "personalization": "high" or "medium" or "low", "angle": "one short line: what the email is built around"}}"""
+
+
+def make_system(profile, template=""):
+    return build_template_prompt(profile, template) if template else build_system_prompt(profile)
+
+
+def finish_email(res, profile, source_text, template=""):
+    """Turn the model's JSON into (subject, full_body, flags). full_body includes sign-off/opt-out."""
+    subject = (res.get("subject") or "").strip()
+    body = res["body"].strip()
+    flags = quality.email_flags(subject, body, source_text + " " + profile["service"] + " " + profile["about"], bool(template))
+    tail = profile["opt_out_line"] if template else f"{profile['signoff']}\n\n{profile['opt_out_line']}"
+    return subject, f"{body}\n\n{tail}", flags
 
 
 def load_leads(path):
@@ -121,7 +177,7 @@ Rules:
 - Subject: 3 to 7 words, specific and plain. No clickbait, no ALL CAPS, no "Re:" or "Fwd:" tricks.
 - Body: 60 to 110 words, 2 short paragraphs at most.
 - Start with "Hi <first name>," if a name is given, otherwise "Hi there,". Do not write a signature or an unsubscribe line; those are added separately.
-- Use ONLY facts given in the lead details. Never invent facts, results, mutual connections, prices, or things you "noticed". If details are thin, write a shorter, honest, generic email and set personalization to "low".
+- Use ONLY facts given in the lead details. Never invent facts, numbers, results, mutual connections, prices, or things you "noticed". If details are thin, write a shorter, honest, generic email and set personalization to "low".
 - Open with something specific to them (their business, site, or situation), not with "I hope this finds you well" or an introduction of yourself.
 - Say plainly what {name} can help with, in one sentence, and make exactly one small, low-pressure ask (a quick reply or a short call).
 - Warm and human, no hype, no buzzwords, no exclamation marks, no emojis, no fake urgency.
@@ -133,6 +189,8 @@ Reply with ONLY a JSON object, nothing else:
 
 def build_user_message(lead, site_summary, notes_label="Notes"):
     lines = ["Lead details:"]
+    if lead.get("name"):
+        lines.append(f"- First name: {first_name(lead['name']) or 'there'}")
     for label, key in (("Name", "name"), ("Company", "company"), ("Website", "website"), ("Notes", "notes")):
         if key == "notes":
             label = notes_label
@@ -147,20 +205,22 @@ def build_user_message(lead, site_summary, notes_label="Notes"):
 
 def run(args, profile, llm):
     leads = load_leads(args.input)
+    template = load_template(getattr(args, "template", None))
+    prepare_output(args.output, OUTPUT_FIELDS)
     done = done_ids(args.output, "email")
     todo = [l for l in leads if l["email"] not in done]
     if args.limit:
         todo = todo[: args.limit]
     print(f"{len(leads)} emails loaded, {len(done)} already done, {len(todo)} to process.")
 
-    system = build_system_prompt(profile)
+    system = make_system(profile, template)
     f, writer = open_writer(args.output, OUTPUT_FIELDS)
     with f:
         for i, lead in enumerate(todo, 1):
             row = {k: lead.get(k, "") for k in ("email", "name", "company", "website")}
 
             if not EMAIL_RE.match(lead["email"]):
-                row.update(subject="", body="", personalization="", angle="", status="invalid email")
+                row.update(subject="", body="", personalization="", angle="", qa_flags="", status="invalid email")
                 writer.writerow(row)
                 f.flush()
                 print(f"[{i}/{len(todo)}] invalid email: {lead['email']}")
@@ -179,17 +239,17 @@ def run(args, profile, llm):
             res = llm.ask_json(system, build_user_message(lead, site), fallback, max_tokens=600)
 
             if "_error" in res or not res.get("body"):
-                row.update(subject="", body="", personalization="", angle=res.get("_error", "empty response"), status="error")
+                row.update(subject="", body="", personalization="", angle=res.get("_error", "empty response"), qa_flags="", status="error")
             else:
-                body = res["body"].strip()
-                signoff = profile["signoff"]
-                full_body = f"{body}\n\n{signoff}\n\n{profile['opt_out_line']}"
+                source = " ".join(str(lead.get(k, "")) for k in ("name", "company", "notes", "website"))
+                subject, full_body, flags = finish_email(res, profile, source, template)
                 row.update(
-                    subject=(res.get("subject") or "").strip(),
+                    subject=subject,
                     body=full_body,
                     personalization=res.get("personalization", ""),
                     angle=res.get("angle", ""),
-                    status="draft",
+                    qa_flags="; ".join(flags),
+                    status="needs_edit" if flags else "draft",
                 )
             writer.writerow(row)
             f.flush()
@@ -197,4 +257,7 @@ def run(args, profile, llm):
             if not llm.dry_run:
                 time.sleep(args.gap)
 
-    print(f"Done. Review {args.output}, edit anything you like, then send yourself in small batches.")
+    from . import review
+    page = review.write_html(args.output)
+    print(f"Done. Open {page} to review, edit {args.output} if needed, then run:")
+    print(f'  python main.py approve --input "{args.output}"')
