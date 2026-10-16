@@ -14,6 +14,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,7 +77,15 @@ def describe_upload(path):
     except SystemExit as e:
         raise ValueError(str(e.code))
     raw = both._read_rows(path)
+    cols = list(raw[0].keys()) if raw else []
+    mapping = {}
+    for field, label in (("notes", "Post"), ("company", "Business"), ("name", "Owner"), ("email", "Email")):
+        for c in cols:
+            if emails.norm_key(c) in emails.FIELD_MAP[field]:
+                mapping[label] = c
+                break
     return {
+        "mapping": mapping,
         "file": Path(path).name,
         "rows": len(raw),
         "usable": len(records),
@@ -119,6 +128,7 @@ class Log:
 
 
 def worker(cfg, out_path):
+    started = time.time()
     try:
         with contextlib.redirect_stdout(Log()):
             name = cfg["name"] or "Me"
@@ -135,7 +145,14 @@ def worker(cfg, out_path):
                 gap=0 if cfg["dry_run"] else 0.5, fetch_sites=False, template=template_path,
                 dry_run=cfg["dry_run"],
             )
-            both.run(args, profile, LLM(dry_run=cfg["dry_run"], model=cfg["model"]))
+            llm = LLM(dry_run=cfg["dry_run"], model=cfg["model"])
+            both.run(args, profile, llm)
+            meta = {
+                "source": re.sub(r"^\d+_", "", cfg["file"]), "tone": cfg["tone"], "dry_run": cfg["dry_run"],
+                "model": "test run (no AI)" if cfg["dry_run"] else f"{llm.provider} / {llm.model}",
+                "seconds": round(time.time() - started, 1), "finished": datetime.now().isoformat(timespec="seconds"),
+            }
+            out_path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
         with JOB_LOCK:
             JOB["state"] = "done"
     except SystemExit as e:
@@ -149,6 +166,28 @@ def worker(cfg, out_path):
 def read_run(run_id):
     _, rows = review.read_rows(run_path(run_id))
     return rows
+
+
+def read_meta(run_id):
+    p = run_path(run_id).with_suffix(".meta.json")
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def approve_ready(run_id):
+    """Approve every row that has no warnings (status 'draft'). Rows needing a look stay untouched."""
+    p = run_path(run_id)
+    with FILE_LOCK:
+        fields, rows = review.read_rows(p)
+        n = 0
+        for r in rows:
+            if r.get("status") == "draft":
+                r["status"] = "approved"
+                n += 1
+        review.write_rows(p, fields, rows)
+    return n
 
 
 def update_row(run_id, row_id, payload):
@@ -250,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": f"{type(e).__name__}: {e}"})
             if url.path == "/api/results":
                 run = parse_qs(url.query).get("run", [""])[0]
-                return self.send(200, {"run": run, "rows": read_run(run)})
+                return self.send(200, {"run": run, "rows": read_run(run), "meta": read_meta(run)})
             if url.path == "/api/export":
                 run = parse_qs(url.query).get("run", [""])[0]
                 data, name = export_approved(run)
@@ -313,6 +352,11 @@ class Handler(BaseHTTPRequestHandler):
                 RUNS.mkdir(parents=True, exist_ok=True)
                 threading.Thread(target=worker, args=(cfg, RUNS / f"{run_id}.csv"), daemon=True).start()
                 return self.send(200, {"run": run_id})
+            if url.path == "/api/bulk":
+                d = self.json_body()
+                if d.get("action") != "approve_ready":
+                    raise ValueError("Unknown action")
+                return self.send(200, {"approved": approve_ready(d.get("run", ""))})
             if url.path == "/api/update":
                 d = self.json_body()
                 return self.send(200, update_row(d.get("run", ""), d.get("id", ""), d))
