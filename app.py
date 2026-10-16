@@ -28,11 +28,14 @@ WEB = ROOT / "webui"
 RUNS = ROOT / "output" / "ui"
 UPLOADS = RUNS / "uploads"
 MAX_BODY = 8 * 1024 * 1024
-STATIC = {
-    "/": ("index.html", "text/html; charset=utf-8"),
-    "/index.html": ("index.html", "text/html; charset=utf-8"),
-    "/styles.css": ("styles.css", "text/css; charset=utf-8"),
-    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+SITE = ROOT / "frontend"
+STATIC = {  # URL -> (file, content type)
+    "/site/": (SITE / "index.html", "text/html; charset=utf-8"),
+    "/site/styles.css": (SITE / "styles.css", "text/css; charset=utf-8"),
+    "/site/script.js": (SITE / "script.js", "application/javascript; charset=utf-8"),
+    "/app": (WEB / "index.html", "text/html; charset=utf-8"),
+    "/styles.css": (WEB / "styles.css", "text/css; charset=utf-8"),
+    "/app.js": (WEB / "app.js", "application/javascript; charset=utf-8"),
 }
 EDITABLE = ("comment", "subject", "body")
 FILE_LOCK = threading.Lock()
@@ -221,9 +224,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         try:
+            if url.path in ("/", "/index.html"):
+                return self.send(302, b"", "text/plain", {"Location": "/site/" if SITE.exists() else "/app"})
+            if url.path == "/site":
+                return self.send(302, b"", "text/plain", {"Location": "/site/"})
             if url.path in STATIC:
-                name, ctype = STATIC[url.path]
-                return self.send(200, (WEB / name).read_bytes(), ctype)
+                path, ctype = STATIC[url.path]
+                if not path.exists():
+                    return self.fail(404, "Not found")
+                return self.send(200, path.read_bytes(), ctype)
             if url.path == "/api/status":
                 load_env()
                 with JOB_LOCK:
@@ -325,7 +334,7 @@ def main():
         server = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     except OSError:
         sys.exit(f"Port {a.port} is busy. Try: python app.py --port {a.port + 1}")
-    url = f"http://127.0.0.1:{a.port}"
+    url = f"http://127.0.0.1:{a.port}/"
     print(f"Nudgeline is running at {url}  (press Ctrl+C to stop)")
     if not a.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

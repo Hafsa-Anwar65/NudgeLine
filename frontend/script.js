@@ -59,3 +59,12 @@
 
   setTimeout(tick, 2400);
 })();
+
+
+// "Open app" buttons: relative link when served by app.py, otherwise point at the local app.
+(() => {
+  const served = location.protocol.startsWith('http') && location.pathname.startsWith('/site');
+  document.querySelectorAll('a[data-app]').forEach((a) => {
+    if (!served) { a.href = 'http://127.0.0.1:8000/app'; a.title = 'Start the app first: python app.py'; }
+  });
+})();
