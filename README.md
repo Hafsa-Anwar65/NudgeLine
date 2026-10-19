@@ -118,3 +118,9 @@ python app.py
 Your browser opens `http://127.0.0.1:8000`. Upload your CSV/XLSX/JSON (or use the 5 sample rows), fill in "About you", pick a tone, optionally paste your own email template, then press **Generate drafts**.
 Review each draft in the page, edit the text, **Approve** or **Reject**, and **Export approved CSV**. Tick "Test run" to try the whole flow without an API key.
 The app runs only on your computer (127.0.0.1) and uses the key from `.env`. Nothing is posted or sent. Stop it with Ctrl+C. Port busy? `python app.py --port 8001`.
+
+## Accounts, plans and demo (web app)
+
+- **Start with demo**: on the landing page or the app's first screen. Shows finished example drafts. No account, no AI key, nothing is saved. You can edit and approve to try it; exporting asks you to create an account.
+- **Accounts**: create an account in the app (email + password). Each user only sees their own uploads and runs. Data stays on your computer in `output/` (`users.json` has scrypt-hashed passwords). It is a local login, not a hosted service: do not expose the app to the internet.
+- **Subscribe / plans**: Free (10 leads per run), Pro (100), Team (200). **No payment is taken.** Subscribing switches the plan on this computer, which only changes the leads-per-run limit. Prices shown are examples. Real payments would need a provider such as Stripe and a hosted server.

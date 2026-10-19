@@ -65,6 +65,6 @@
 (() => {
   const served = location.protocol.startsWith('http') && location.pathname.startsWith('/site');
   document.querySelectorAll('a[data-app]').forEach((a) => {
-    if (!served) { a.href = 'http://127.0.0.1:8000/app'; a.title = 'Start the app first: python app.py'; }
+    if (!served) { a.href = 'http://127.0.0.1:8000' + a.getAttribute('href'); a.title = 'Start the app first: python app.py'; }
   });
 })();

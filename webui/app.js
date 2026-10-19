@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const state = { file: null, tone: 'friendly', tones: [], rows: [], meta: {}, run: '', filter: 'all', q: '', sel: null,
-    view: 'setup', running: false, hasKey: false, poll: null, runs: [] };
+    view: 'setup', running: false, hasKey: false, poll: null, runs: [], user: null, plans: {}, demo: false, wantPlan: '', authTab: 'signup' };
 
   const TONE_DESC = { friendly: 'Warm and approachable. A good default.', professional: 'Polished and respectful, still human.', casual: 'Relaxed and conversational, like a quick message.' };
   const STATUS = {
@@ -14,10 +14,24 @@
 
   // ---------- api ----------
   async function api(path, opts = {}) {
+    if (state.demo && /^\/api\/(update|bulk|results|export)/.test(path)) return demoApi(path, opts);
     const res = await fetch(path, { ...opts, headers: { 'X-Nudgeline': '1', ...(opts.headers || {}) } });
     const data = (res.headers.get('content-type') || '').includes('json') ? await res.json() : res;
+    if (res.status === 401 && state.user) { state.user = null; renderAccount(); showAuth(); }
     if (!res.ok) throw new Error((data && data.error) || 'Something went wrong');
     return data;
+  }
+  // Demo mode keeps everything in memory: edits and approvals work, nothing is saved.
+  function demoApi(path, opts) {
+    if (path.startsWith('/api/results')) return { run: 'demo', rows: state.rows, meta: state.meta };
+    if (path.startsWith('/api/export')) throw new Error('Create a free account to export your approved drafts.');
+    const d = JSON.parse(opts.body || '{}');
+    if (path.startsWith('/api/bulk')) { let n = 0; state.rows.forEach((r) => { if (r.status === 'draft') { r.status = 'approved'; n++; } }); return { approved: n }; }
+    const row = state.rows.find((r) => r.id === d.id); if (!row) throw new Error('Lead not found');
+    ['comment', 'subject', 'body'].forEach((k) => { if (typeof d[k] === 'string') row[k] = d[k]; });
+    if (d.decision === 'approve') row.status = 'approved'; else if (d.decision === 'reject') row.status = 'rejected';
+    else if (d.decision === 'reset') row.status = row.qa_flags ? 'needs_edit' : 'draft';
+    return row;
   }
   const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2400); }
@@ -45,12 +59,13 @@
   }
   function showView(v) {
     state.view = v;
-    $('view-setup').hidden = v !== 'setup'; $('view-results').hidden = v !== 'results';
+    ['setup', 'results', 'auth', 'plans'].forEach((n) => { $('view-' + n).hidden = v !== n; });
     $('export-bar').hidden = v !== 'results';
+    $('stepper').style.visibility = v === 'setup' || v === 'results' ? 'visible' : 'hidden';
     window.scrollTo({ top: 0 });
     paintStepper();
   }
-  $('new-run').addEventListener('click', () => showView('setup'));
+  $('new-run').addEventListener('click', () => { if (state.demo) { state.authTab = 'signup'; showAuth('Create a free account to run Nudgeline on your own leads.'); } else showView('setup'); });
 
   // ---------- setup ----------
   const ready = () => !!(state.file && state.file.usable > 0 && $('f-service').value.trim() && $('f-about').value.trim());
@@ -271,7 +286,7 @@
   function renderExport() {
     const n = count('approved'), ready = count('draft') + count('needs_edit');
     $('approved-count').innerHTML = `<b>${n}</b> approved` + (ready ? ` <span class="d-sub">· ${ready} still to review</span>` : '');
-    $('export').disabled = n === 0;
+    $('export').disabled = n === 0 && !state.demo;
   }
   $('approve-all').addEventListener('click', async () => {
     const n = count('draft'); if (!n || !confirm(`Approve the ${n} ready draft(s)?\n\nDrafts marked "Check this" stay untouched so you can review them one by one.`)) return;
@@ -296,16 +311,129 @@
     try { const m = await api('/api/models'); m.models.forEach((id) => { const o = document.createElement('option'); o.value = id; o.textContent = id; $('f-model').appendChild(o); }); } catch (e) {}
   }
 
+  // ---------- accounts, plans, demo ----------
+  const initials = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  function renderAccount() {
+    const u = state.user;
+    $('acct').hidden = !u; $('plan-btn').hidden = !u; $('signin-btn').hidden = !!u || state.view === 'auth';
+    $('demo-pill').hidden = !state.demo; $('key-pill').hidden = !u;
+    if (u) {
+      $('acct-btn').textContent = initials(u.name); $('m-name').textContent = u.name; $('m-email').textContent = u.email;
+      $('plan-btn').textContent = u.plan_name + ' plan';
+    }
+    $('acct-menu').hidden = true; $('acct-btn').setAttribute('aria-expanded', 'false');
+  }
+  $('acct-btn').addEventListener('click', (e) => { e.stopPropagation(); const m = $('acct-menu'); m.hidden = !m.hidden; $('acct-btn').setAttribute('aria-expanded', String(!m.hidden)); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('#acct')) $('acct-menu').hidden = true; });
+  $('m-plans').addEventListener('click', showPlans); $('plan-btn').addEventListener('click', showPlans);
+  $('m-out').addEventListener('click', async () => {
+    try { await post('/api/logout', {}); } catch (e) {}
+    state.user = null; state.rows = []; state.run = ''; state.file = null; state.demo = false; location.href = '/app';
+  });
+  $('signin-btn').addEventListener('click', () => { state.authTab = 'login'; showAuth(); });
+
+  function setAuthTab(tab) {
+    state.authTab = tab;
+    document.querySelectorAll('.auth-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    $('fld-name').hidden = tab !== 'signup';
+    $('auth-go').textContent = tab === 'signup' ? 'Create free account' : 'Sign in';
+    $('a-pass').autocomplete = tab === 'signup' ? 'new-password' : 'current-password';
+    $('auth-err').hidden = true;
+  }
+  document.querySelectorAll('.auth-tabs button').forEach((b) => b.addEventListener('click', () => setAuthTab(b.dataset.tab)));
+  function showAuth(msg) {
+    showView('auth'); setAuthTab(state.authTab); renderAccount();
+    if (msg) { $('auth-err').textContent = msg; $('auth-err').hidden = false; $('auth-err').style.background = 'var(--field)'; $('auth-err').style.color = 'var(--text)'; }
+    else { $('auth-err').style.background = ''; $('auth-err').style.color = ''; }
+  }
+  $('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault(); $('auth-err').style.background = ''; $('auth-err').style.color = '';
+    const body = { email: $('a-email').value, password: $('a-pass').value, name: $('a-name').value };
+    $('auth-go').disabled = true;
+    try {
+      const r = await post(state.authTab === 'signup' ? '/api/signup' : '/api/login', body);
+      state.user = r.user; state.demo = false; $('a-pass').value = '';
+      history.replaceState(null, '', '/app');
+      await enterApp();
+      if (state.wantPlan && state.wantPlan !== 'free' && state.wantPlan !== state.user.plan) showPlans(); else if (state.wantPlan) toast('Welcome to Nudgeline');
+      state.wantPlan = '';
+    } catch (err) { $('auth-err').textContent = err.message; $('auth-err').hidden = false; }
+    $('auth-go').disabled = false;
+  });
+  $('start-demo').addEventListener('click', startDemo);
+  $('demo-signup').addEventListener('click', () => { state.authTab = 'signup'; showAuth('Create a free account to run Nudgeline on your own leads and export approved drafts.'); });
+
+  async function startDemo() {
+    try {
+      const d = await api('/api/demo');
+      state.demo = true; state.run = 'demo'; state.rows = d.rows; state.meta = d.meta; state.filter = 'all'; state.q = ''; $('search').value = '';
+      state.sel = (state.rows.find((r) => r.status === 'needs_edit') || state.rows[0]).id;
+      showView('results'); $('demo-banner').hidden = false; $('run-select').innerHTML = '<option>Demo run</option>'; $('run-select').disabled = true;
+      $('export').textContent = 'Create account to export'; $('export').disabled = false;
+      renderAll(); renderAccount();
+      if (!store.get('nl-tip-seen')) $('tip').hidden = false;
+    } catch (e) { toast(e.message); }
+  }
+  // exporting in demo mode sends people to sign up instead
+  $('export').addEventListener('click', (e) => {
+    if (!state.demo) return;
+    e.stopImmediatePropagation(); state.authTab = 'signup'; showAuth('Create a free account to export your approved drafts as a CSV.');
+  }, true);
+
+  function showPlans() {
+    if (!state.user) { state.authTab = 'signup'; showAuth('Create a free account first, then you can pick a plan.'); return; }
+    if (state.view !== 'plans') state.prevView = state.view;
+    renderPlans(); showView('plans');
+  }
+  function renderPlans() {
+    const cur = state.user.plan, order = ['free', 'pro', 'team'];
+    $('plan-grid').innerHTML = order.filter((k) => state.plans[k]).map((k) => {
+      const p = state.plans[k], isCur = k === cur;
+      const label = isCur ? 'Your current plan' : (p.price > (state.plans[cur] || { price: 0 }).price ? `Subscribe to ${p.name}` : `Switch to ${p.name}`);
+      return `<div class="card plan-card ${isCur ? 'current' : ''} ${state.wantPlan === k && !isCur ? 'want' : ''}">
+        ${isCur ? '<span class="chip ok cur">Current</span>' : ''}
+        <h3>${esc(p.name)}</h3><div class="price">$${p.price}<small> / month</small></div>
+        <ul>${p.points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        <button type="button" class="btn ${k === 'pro' && !isCur ? 'btn-primary' : 'btn-ghost'}" data-plan="${k}" ${isCur ? 'disabled' : ''}>${label}</button></div>`;
+    }).join('');
+    $('plan-grid').querySelectorAll('[data-plan]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const r = await post('/api/plan', { plan: b.dataset.plan }); state.user = r.user; state.wantPlan = '';
+        renderAccount(); renderPlans(); toast(`You are now on the ${r.user.plan_name} plan`); applyLimit();
+      } catch (e) { toast(e.message); }
+    }));
+  }
+  $('plans-back').addEventListener('click', () => showView(state.prevView === 'results' && state.rows.length ? 'results' : 'setup'));
+  function applyLimit() {
+    if (!state.user) return;
+    const max = state.user.max_leads; $('f-limit').max = state.file ? Math.min(max, state.file.usable) : max;
+    if (Number($('f-limit').value) > max) $('f-limit').value = max;
+  }
+
+  async function enterApp() {
+    const s = await refreshStatus();
+    state.tones = s.tones; const d = s.defaults;
+    $('f-name').value = d.name || ''; $('f-service').value = d.service || ''; $('f-about').value = d.about || '';
+    if (s.tones.includes(d.tone)) state.tone = d.tone;
+    renderTone(); $('f-dry').checked = !s.keys.length;
+    $('demo-banner').hidden = true; $('run-select').disabled = false; $('export').textContent = 'Export approved (CSV)';
+    state.demo = false; state.rows = []; state.run = '';
+    await loadRuns(null, false); loadModels(); applyLimit(); updateRun(); renderAccount(); showView('setup');
+    if (s.job.state === 'running') { state.running = true; $('progress').hidden = false; $('run').textContent = 'Writing your drafts…'; updateRun(); poll(); }
+  }
+
   // ---------- start ----------
   (async () => {
+    const q = new URLSearchParams(location.search);
+    state.wantPlan = ['free', 'pro', 'team'].includes(q.get('plan')) ? q.get('plan') : '';
     try {
-      const s = await refreshStatus();
-      state.tones = s.tones; const d = s.defaults;
-      $('f-name').value = d.name || ''; $('f-service').value = d.service || ''; $('f-about').value = d.about || '';
-      if (s.tones.includes(d.tone)) state.tone = d.tone;
-      renderTone(); if (!s.keys.length) $('f-dry').checked = true;
-      await loadRuns(null, false); loadModels(); updateRun(); showView('setup');
-      if (s.job.state === 'running') { state.running = true; $('progress').hidden = false; $('run').textContent = 'Writing your drafts…'; updateRun(); poll(); }
-    } catch (e) { $('key-pill').textContent = 'App not reachable'; }
+      const me = await api('/api/me');
+      state.user = me.user; state.plans = me.plans; state.hasKey = me.keys.length > 0;
+      if (state.user) { await enterApp(); if (state.wantPlan && state.wantPlan !== 'free') { showPlans(); } state.wantPlan = state.user ? '' : state.wantPlan; return; }
+      renderAccount();
+      if (q.get('demo') === '1') { await startDemo(); return; }
+      state.authTab = state.wantPlan ? 'signup' : 'signup';
+      showAuth(state.wantPlan && state.wantPlan !== 'free' ? `Create a free account, then subscribe to the ${me.plans[state.wantPlan].name} plan.` : '');
+    } catch (e) { $('key-pill').hidden = false; $('key-pill').textContent = 'App not reachable'; }
   })();
 })();

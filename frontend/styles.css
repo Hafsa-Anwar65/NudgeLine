@@ -173,3 +173,15 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .foot-brand { grid-column: 1 / -1; }
 }
+
+/* pricing */
+.plans { align-items: stretch; }
+.plan { display: flex; flex-direction: column; gap: 14px; position: relative; }
+.plan h3 { margin: 0; }
+.plan .price { font-size: 40px; font-weight: 800; letter-spacing: -.03em; }
+.plan .price small { font-size: 15px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.plan ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; color: var(--muted); font-size: 15px; flex: 1; }
+.plan li::before { content: "✓"; color: var(--accent-text); font-weight: 800; margin-right: 9px; }
+.plan .btn { justify-content: center; }
+.plan.featured { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 20px 60px -30px var(--accent); }
+.plan .tag { position: absolute; top: -12px; right: 20px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 99px; }
