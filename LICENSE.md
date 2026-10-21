@@ -1,3 +1,27 @@
+<div align="center">
+
+<img src="docs/license-banner.svg" alt="Nudgeline license banner" width="880">
+
+![License](https://img.shields.io/badge/license-FSL--1.1--MIT-5444ec?style=for-the-badge)
+![Source available](https://img.shields.io/badge/source-available-0b7a4b?style=for-the-badge)
+![Becomes MIT](https://img.shields.io/badge/becomes%20MIT-after%202%20years-3776ab?style=for-the-badge)
+
+</div>
+
+> [!TIP]
+> **You can:** use it for your own outreach, read and learn from the code, modify it for internal use, teach with it, do research, and help clients run it as a service.
+
+> [!WARNING]
+> **You cannot:** sell Nudgeline, or a close copy, as a product or hosted service that competes with it. This is called a *Competing Use*.
+
+> [!NOTE]
+> **Becomes MIT:** every version turns into the MIT license on its second anniversary, and this cannot be taken back.
+
+> [!IMPORTANT]
+> The coloured summary above is only a reading aid. The legal terms are the text below, and if they ever differ, the text below counts.
+
+---
+
 # Functional Source License, Version 1.1, MIT Future License
 
 ## Abbreviation
