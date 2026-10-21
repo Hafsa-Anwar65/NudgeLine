@@ -59,8 +59,9 @@
   }
   function showView(v) {
     state.view = v;
-    ['setup', 'results', 'auth', 'plans'].forEach((n) => { $('view-' + n).hidden = v !== n; });
+    ['setup', 'results', 'auth', 'plans', 'admin'].forEach((n) => { $('view-' + n).hidden = v !== n; });
     $('export-bar').hidden = v !== 'results';
+    $('acct-menu').hidden = true;
     $('stepper').style.visibility = v === 'setup' || v === 'results' ? 'visible' : 'hidden';
     window.scrollTo({ top: 0 });
     paintStepper();
@@ -109,7 +110,7 @@
 
   function updateRun() {
     const why = !state.file ? 'Add your leads first (step 1).' : !$('f-service').value.trim() || !$('f-about').value.trim() ? 'Fill in your service and one line about you (step 2).'
-      : !state.hasKey && !$('f-dry').checked ? 'No AI key found, so tick "Test run" under Advanced options, or add GROQ_API_KEY to your .env file.' : '';
+      : !state.hasKey && !$('f-dry').checked ? (state.user && state.user.admin ? 'No AI key found, so tick "Test run" under Advanced options, or add GROQ_API_KEY to your .env file.' : 'AI is not set up yet. Ask the admin, or tick "Test run" under Advanced options.') : '';
     $('run').disabled = !!why || state.running;
     $('run-hint').textContent = state.running ? '' : why || (state.hasKey || $('f-dry').checked ? `Ready. This will draft ${Math.min(Number($('f-limit').value) || 5, state.file.usable)} lead(s).` : '');
     paintStepper();
@@ -148,7 +149,8 @@
     const s = await api('/api/status');
     state.hasKey = s.keys.length > 0; state.runs = s.runs;
     const pill = $('key-pill'); pill.className = 'pill ' + (state.hasKey ? 'ok' : 'warn');
-    pill.textContent = state.hasKey ? `AI ready (${s.keys[0]})` : 'No AI key: test mode only';
+    pill.textContent = state.hasKey ? (state.user && state.user.admin ? `AI ready (${s.keys.join(', ')})` : 'AI ready') : (state.user && state.user.admin ? 'No AI key: test mode only' : 'AI not set up: use Test run');
+    setUnread(s.admin_unread || 0);
     return s;
   }
   async function loadRuns(select, openResults) {
@@ -321,6 +323,7 @@
       $('acct-btn').textContent = initials(u.name); $('m-name').textContent = u.name; $('m-email').textContent = u.email;
       $('plan-btn').textContent = u.plan_name + ' plan';
     }
+    $('m-admin').hidden = !(u && u.admin);
     $('acct-menu').hidden = true; $('acct-btn').setAttribute('aria-expanded', 'false');
   }
   $('acct-btn').addEventListener('click', (e) => { e.stopPropagation(); const m = $('acct-menu'); m.hidden = !m.hidden; $('acct-btn').setAttribute('aria-expanded', String(!m.hidden)); });
@@ -416,11 +419,68 @@
     $('f-name').value = d.name || ''; $('f-service').value = d.service || ''; $('f-about').value = d.about || '';
     if (s.tones.includes(d.tone)) state.tone = d.tone;
     renderTone(); $('f-dry').checked = !s.keys.length;
+    $('f-model').closest('label').hidden = !state.user.admin;
     $('demo-banner').hidden = true; $('run-select').disabled = false; $('export').textContent = 'Export approved (CSV)';
     state.demo = false; state.rows = []; state.run = '';
-    await loadRuns(null, false); loadModels(); applyLimit(); updateRun(); renderAccount(); showView('setup');
+    await loadRuns(null, false); if (state.user.admin) loadModels(); applyLimit(); updateRun(); renderAccount(); showView('setup');
     if (s.job.state === 'running') { state.running = true; $('progress').hidden = false; $('run').textContent = 'Writing your drafts…'; updateRun(); poll(); }
   }
+
+  // ---------- admin dashboard (admin only) ----------
+  let admTimer = null, lastUnread = 0;
+  function setUnread(n) {
+    const admin = state.user && state.user.admin;
+    $('av-dot').hidden = !(admin && n > 0); $('m-badge').hidden = !(admin && n > 0); $('m-badge').textContent = n;
+    if (admin && n > lastUnread) toast('Admin: new AI model notification');
+    lastUnread = n;
+  }
+  const fmtNum = (n) => Number(n || 0).toLocaleString();
+  const fmtTime = (iso) => iso ? iso.replace('T', ' ').slice(5, 16) : '–';
+  function meter(label, left, total, note) {
+    if (left == null || !total) return '';
+    const pct = Math.max(0, Math.min(100, (left / total) * 100));
+    return `<div class="meter"><span>${esc(label)}: ${fmtNum(left)} of ${fmtNum(total)} left${note ? ' · ' + esc(note) : ''}</span><div class="track"><i class="${pct < 10 ? 'crit' : pct < 25 ? 'low' : ''}" style="width:${pct}%"></i></div></div>`;
+  }
+  function renderAdmin(d) {
+    const ready = d.chain.filter((m) => m.status === 'ready').length;
+    const req = d.chain.reduce((a, m) => a + m.requests, 0), tok = d.chain.reduce((a, m) => a + m.tokens, 0);
+    $('adm-tiles').innerHTML = [['', d.active || '–', 'Serving now'], ['ok', `${ready} of ${d.chain.length}`, 'Models ready'], ['', fmtNum(req), 'Requests today'], ['', fmtNum(tok), 'Tokens today']]
+      .map(([c, v, l]) => `<div class="tile ${c}"><b style="font-size:${String(v).length > 14 ? 15 : 24}px;word-break:break-all">${esc(v)}</b><span>${l}</span></div>`).join('');
+    $('adm-chain').innerHTML = d.chain.length ? d.chain.map((m) => {
+      const chip = m.active && m.status === 'ready' ? '<span class="chip ok">Serving now</span>' : m.status === 'ready' ? '<span class="chip">Standby</span>'
+        : m.status === 'cooling' ? `<span class="chip warn">Cooling down · back in ${Math.max(1, Math.round(m.retry_in / 60))} min</span>` : `<span class="chip bad">Disabled: ${esc(m.reason)}</span>`;
+      const l = m.limits || {};
+      return `<div class="mcard ${m.active && m.status === 'ready' ? 'serving' : ''} ${m.status === 'disabled' ? 'disabled' : ''}">
+        <div class="m-top"><div class="m-name"><span class="m-ord">${m.order}</span><code>${esc(m.id)}</code>${chip}</div>
+          <div class="m-acts"><button class="btn btn-ghost btn-sm" data-test="${esc(m.id)}" type="button">Test</button>${m.status !== 'ready' ? `<button class="btn btn-ghost btn-sm" data-reset="${esc(m.id)}" type="button">Reset</button>` : ''}</div></div>
+        <div class="m-stats"><div><b>${fmtNum(m.requests)}</b>requests today</div><div><b>${fmtNum(m.tokens)}</b>tokens today</div><div><b>${fmtNum(m.errors)}</b>errors today</div><div><b>${fmtTime(m.last_used)}</b>last used</div></div>
+        ${meter('Daily budget', m.budget_left, m.budget, 'your setting')}
+        ${meter('Requests (provider)', l.rem_req, l.lim_req, l.at ? 'as of ' + fmtTime(l.at) : '')}
+        ${meter('Tokens (provider, current window)', l.rem_tok, l.lim_tok, l.at ? 'as of ' + fmtTime(l.at) : '')}
+        ${!m.budget && l.rem_req == null && l.rem_tok == null ? '<div class="meter"><span>No usage limit info yet. It appears after the first successful request, or set a budget with @tokens in LLM_CHAIN.</span></div>' : ''}
+        ${m.last_error ? `<div class="m-err">Last problem: ${esc(m.last_error)}</div>` : ''}</div>`;
+    }).join('') : '<div class="card"><b>No AI keys found.</b><p class="hint">Add GROQ_API_KEY (and optionally XAI_API_KEY or ANTHROPIC_API_KEY) to .env and restart the app.</p></div>';
+    $('adm-events').innerHTML = d.events.length ? d.events.map((e) => `<div class="ev ${e.read ? '' : 'unread'}"><span class="lvl ${esc(e.level)}"></span><div class="ev-msg">${esc(e.msg)}</div><time>${esc(fmtTime(e.ts))}</time></div>`).join('')
+      : '<p class="hint">Nothing yet. You will see a note here whenever a model runs low, hits a limit, or the app switches to another one.</p>';
+    $('adm-chain').querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = 'Testing…';
+      try { const r = await post('/api/admin/test', { id: b.dataset.test }); renderAdmin(r.dashboard); toast(r.ok ? 'Model works' : 'Test failed: ' + r.message); } catch (e) { toast(e.message); }
+    }));
+    $('adm-chain').querySelectorAll('[data-reset]').forEach((b) => b.addEventListener('click', async () => { try { renderAdmin(await post('/api/admin/reset', { id: b.dataset.reset })); toast('Reset'); } catch (e) { toast(e.message); } }));
+    setUnread(d.unread);
+  }
+  async function loadAdmin() { try { renderAdmin(await api('/api/admin/dashboard')); } catch (e) { toast(e.message); } }
+  function showAdmin() {
+    if (!(state.user && state.user.admin)) return;
+    if (state.view !== 'admin') state.prevView = state.view;
+    showView('admin'); loadAdmin(); clearInterval(admTimer);
+    admTimer = setInterval(() => { if (state.view === 'admin') loadAdmin(); else clearInterval(admTimer); }, 8000);
+  }
+  $('m-admin').addEventListener('click', showAdmin);
+  $('adm-refresh').addEventListener('click', loadAdmin);
+  $('adm-back').addEventListener('click', () => showView(state.prevView === 'results' && state.rows.length ? 'results' : 'setup'));
+  $('adm-read').addEventListener('click', async () => { try { renderAdmin(await post('/api/admin/read', {})); } catch (e) { toast(e.message); } });
+  setInterval(() => { if (state.user && state.user.admin && state.view !== 'admin') refreshStatus().catch(() => {}); }, 30000);
 
   // ---------- start ----------
   (async () => {

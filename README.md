@@ -124,3 +124,10 @@ The app runs only on your computer (127.0.0.1) and uses the key from `.env`. Not
 - **Start with demo**: on the landing page or the app's first screen. Shows finished example drafts. No account, no AI key, nothing is saved. You can edit and approve to try it; exporting asks you to create an account.
 - **Accounts**: create an account in the app (email + password). Each user only sees their own uploads and runs. Data stays on your computer in `output/` (`users.json` has scrypt-hashed passwords). It is a local login, not a hosted service: do not expose the app to the internet.
 - **Subscribe / plans**: Free (10 leads per run), Pro (100), Team (200). **No payment is taken.** Subscribing switches the plan on this computer, which only changes the leads-per-run limit. Prices shown are examples. Real payments would need a provider such as Stripe and a hosted server.
+
+## Several AI models with automatic fallback (admin only)
+
+- Nudgeline can use 2-3 or more models. When one runs out of quota, hits a rate limit or errors, the next one takes over **without stopping the run**, and the first one is tried again once it recovers. Set the order with `LLM_CHAIN` in `.env` (see `.env.example`); without it, the order is built from your keys.
+- **Only the admin** sees which model is running and what usage is left: avatar menu → **Admin dashboard** (status per model, requests/tokens today, limits reported by the provider, optional daily budget, Test and Reset buttons). Switch/limit/failure notifications appear there with a red dot on the avatar. Regular users, the run log and exported files never show model names.
+- The admin is the first account created, or the emails in `ADMIN_EMAILS`. Usage and notifications are stored in `output/admin/`.
+- "Left" numbers come from the provider's response headers when sent (Groq does), otherwise from your `@budget`. Providers that report nothing show no figure rather than a guess.

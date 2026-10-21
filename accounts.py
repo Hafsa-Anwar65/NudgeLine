@@ -8,6 +8,7 @@ plans are a local switch that only changes how many leads one run may contain.
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import threading
@@ -62,9 +63,19 @@ def _check(pw, stored):
     return hmac.compare_digest(_hash(pw, bytes.fromhex(salt_hex)), stored)
 
 
-def public(u):
+def is_admin(u, users=None):
+    """Admin = listed in ADMIN_EMAILS (.env), or the first account ever created."""
+    listed = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+    if listed:
+        return u["email"] in listed
+    users = users if users is not None else _read(USERS)
+    first = min(users.values(), key=lambda x: x.get("created", ""), default=None)
+    return bool(first) and first["id"] == u["id"]
+
+
+def public(u, users=None):
     plan = PLANS.get(u.get("plan"), PLANS["free"])
-    return {"id": u["id"], "email": u["email"], "name": u["name"], "plan": u.get("plan", "free"),
+    return {"admin": is_admin(u, users), "id": u["id"], "email": u["email"], "name": u["name"], "plan": u.get("plan", "free"),
             "plan_name": plan["name"], "max_leads": plan["max_leads"], "created": u.get("created", "")}
 
 

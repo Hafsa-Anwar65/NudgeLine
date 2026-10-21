@@ -4,7 +4,8 @@
 import argparse
 
 from drafter import both, comments, emails, review
-from drafter.common import ROOT, TONES, LLM, load_env, load_profile
+from drafter.common import ROOT, TONES, load_env, load_profile
+from drafter.router import Router
 
 
 def build_parser():
@@ -65,7 +66,7 @@ def main():
     profile = load_profile(args.profile)
     if args.tone:
         profile["tone"] = args.tone
-    llm = LLM(dry_run=args.dry_run)
+    llm = Router(dry_run=args.dry_run)
 
     if args.cmd == "comments":
         comments.run(args, profile, llm)

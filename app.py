@@ -26,7 +26,9 @@ import accounts
 import demo
 from http.cookies import SimpleCookie
 from drafter import both, comments, emails, review
-from drafter.common import LLM, ROOT, TONES, _find_keys, load_env
+from drafter import router
+from drafter.common import ROOT, TONES, _find_keys, load_env
+from drafter.router import Router as LLM
 
 WEB = ROOT / "webui"
 RUNS = ROOT / "output" / "ui"
@@ -169,7 +171,7 @@ def worker(uid, cfg, out_path):
             both.run(args, profile, llm)
             meta = {
                 "source": re.sub(r"^\d+_", "", cfg["file"]), "tone": cfg["tone"], "dry_run": cfg["dry_run"],
-                "model": "test run (no AI)" if cfg["dry_run"] else f"{llm.provider} / {llm.model}",
+                "model": "test run (no AI)" if cfg["dry_run"] else llm.summary(),  # admin-only, stripped for users
                 "seconds": round(time.time() - started, 1), "finished": datetime.now().isoformat(timespec="seconds"),
             }
             out_path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -186,6 +188,20 @@ def worker(uid, cfg, out_path):
 def read_run(uid, run_id):
     _, rows = review.read_rows(run_path(uid, run_id))
     return rows
+
+
+def public_meta(meta, user):
+    """Only the admin may see which AI model wrote a run."""
+    if user.get("admin"):
+        return meta
+    meta = {k: v for k, v in meta.items() if k != "model"}
+    meta["model"] = "AI-written drafts"
+    return meta
+
+
+def visible_keys(user):
+    keys = sorted(_find_keys())
+    return keys if user and user.get("admin") else (["ready"] if keys else [])
 
 
 def read_meta(uid, run_id):
@@ -311,7 +327,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, path.read_bytes(), ctype)
             if url.path == "/api/me":
                 load_env()
-                return self.send(200, {"user": self.user(), "plans": accounts.PLANS, "keys": sorted(_find_keys())})
+                u = self.user()
+                return self.send(200, {"user": u, "plans": accounts.PLANS, "keys": visible_keys(u)})
             if url.path == "/api/demo":  # public: ready-made example results, nothing is written
                 return self.send(200, {"rows": demo.DEMO_ROWS, "meta": demo.DEMO_META})
             u = self.need_user()
@@ -321,9 +338,19 @@ class Handler(BaseHTTPRequestHandler):
                 with JOB_LOCK:
                     job = dict(JOBS.get(uid) or new_job())
                     job["log"] = list(job["log"][-8:])
-                return self.send(200, {"keys": sorted(_find_keys()), "job": job, "runs": list_runs(uid),
-                                       "defaults": defaults(uid, u), "tones": list(TONES)})
+                return self.send(200, {"keys": visible_keys(u), "job": job, "runs": list_runs(uid),
+                                       "defaults": defaults(uid, u), "tones": list(TONES),
+                                       "admin_unread": router.unread_count() if u["admin"] else 0})
+            if url.path.startswith("/api/admin/"):
+                if not u["admin"]:
+                    return self.fail(403, "Admin only.")
+                if url.path == "/api/admin/dashboard":
+                    load_env()
+                    return self.send(200, router.dashboard())
+                return self.fail(404, "Not found")
             if url.path == "/api/models":
+                if not u["admin"]:
+                    return self.send(200, {"models": []})
                 load_env()
                 try:
                     llm = LLM()
@@ -334,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": f"{type(e).__name__}: {e}"})
             if url.path == "/api/results":
                 run = parse_qs(url.query).get("run", [""])[0]
-                return self.send(200, {"run": run, "rows": read_run(uid, run), "meta": read_meta(uid, run)})
+                return self.send(200, {"run": run, "rows": read_run(uid, run), "meta": public_meta(read_meta(uid, run), u)})
             if url.path == "/api/export":
                 run = parse_qs(url.query).get("run", [""])[0]
                 data, name = export_approved(uid, run)
@@ -367,6 +394,21 @@ class Handler(BaseHTTPRequestHandler):
             u = self.need_user()
             uid = u["id"]
             up = udir(uid) / "uploads"
+            if url.path.startswith("/api/admin/"):
+                if not u["admin"]:
+                    return self.fail(403, "Admin only.")
+                load_env()
+                d = self.json_body()
+                if url.path == "/api/admin/reset":
+                    router.reset(str(d.get("id", "")))
+                    return self.send(200, router.dashboard())
+                if url.path == "/api/admin/read":
+                    router.mark_read()
+                    return self.send(200, router.dashboard())
+                if url.path == "/api/admin/test":
+                    ok, msg = LLM().test(str(d.get("id", "")))
+                    return self.send(200, {"ok": ok, "message": msg, "dashboard": router.dashboard()})
+                return self.fail(404, "Not found")
             if url.path == "/api/plan":
                 d = self.json_body()
                 return self.send(200, {"user": accounts.set_plan(uid, str(d.get("plan", "")))})
@@ -395,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
                     "tone": d.get("tone") if d.get("tone") in TONES else "friendly",
                     "template": str(d.get("template", ""))[:3000],
                     "limit": max(1, min(int(d.get("limit") or 5), 200)),
-                    "model": re.sub(r"[^A-Za-z0-9._:/-]", "", str(d.get("model", "")))[:80],
+                    "model": re.sub(r"[^A-Za-z0-9._:/-]", "", str(d.get("model", "")))[:80] if u["admin"] else "",
                     "dry_run": bool(d.get("dry_run")),
                 }
                 if not (up / cfg["file"]).is_file():
@@ -408,7 +450,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not cfg["dry_run"]:
                     load_env()
                     if not _find_keys():
-                        raise ValueError("No API key found. Add GROQ_API_KEY to the .env file, or tick 'Test run'.")
+                        raise ValueError("AI is not set up yet. Ask the admin to add an API key, or tick 'Test run'.")
                 with JOB_LOCK:
                     if (JOBS.get(uid) or {}).get("state") == "running":
                         raise ValueError("A run is already in progress.")

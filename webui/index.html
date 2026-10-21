@@ -21,10 +21,11 @@
       <span id="demo-pill" class="pill acc" hidden>Demo mode</span>
       <button id="plan-btn" class="pill plan-pill" type="button" title="See plans" hidden></button>
       <div id="acct" class="acct" hidden>
-        <button id="acct-btn" class="avatar" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu"></button>
+        <button id="acct-btn" class="avatar" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu"></button><i id="av-dot" class="av-dot" hidden></i>
         <div id="acct-menu" class="menu" hidden>
           <div class="menu-who"><b id="m-name"></b><small id="m-email"></small></div>
           <button type="button" id="m-plans">Plans and subscription</button>
+          <button type="button" id="m-admin" hidden>Admin dashboard <span id="m-badge" class="nbadge" hidden></span></button>
           <button type="button" id="m-out">Sign out</button>
         </div>
       </div>
@@ -67,6 +68,27 @@
         </form>
       </div>
     </div>
+  </section>
+
+  <!-- ============ ADMIN ============ -->
+  <section id="view-admin" class="view admin-view" hidden>
+    <div class="sum-head">
+      <div><h1>AI models</h1><p class="hint">Only you can see this page. Users never see which model is running.</p></div>
+      <div class="sum-actions"><button id="adm-refresh" class="btn btn-ghost btn-sm" type="button">Refresh</button><button id="adm-back" class="btn btn-ghost btn-sm" type="button">← Back</button></div>
+    </div>
+    <div id="adm-tiles" class="tiles"></div>
+    <div id="adm-chain" class="chain"></div>
+    <div class="card adm-events">
+      <div class="ev-head"><h2>Notifications</h2><button id="adm-read" class="btn btn-ghost btn-sm" type="button">Mark all read</button></div>
+      <div id="adm-events"></div>
+    </div>
+    <details class="more adm-help"><summary>How the order and limits are set</summary>
+      <p class="hint">Models are tried from top to bottom. When one runs out or fails, the next one takes over without stopping the run, and the first one is tried again once it recovers. Set the order in <code>.env</code>:</p>
+      <pre class="log">LLM_CHAIN=groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-120b,xai:grok-4
+# optional daily token budget after @ so the bar can show what is left:
+# LLM_CHAIN=groq:llama-3.3-70b-versatile@500000,xai:grok-4@300000</pre>
+      <p class="hint">Without LLM_CHAIN it is built from your keys (three Groq models, then Grok and Claude if their keys are set). "Left" figures come from the provider's response headers when it sends them, otherwise from your budget. Restart <code>python app.py</code> after editing <code>.env</code>.</p>
+    </details>
   </section>
 
   <!-- ============ PLANS ============ -->
