@@ -1,141 +1,364 @@
+<div align="center">
+
 # Nudgeline
 
-Two small tools in one project. Both **draft only**: nothing is posted or sent for you.
+**Turn a list of leads into comments and emails that are ready to review.**
+Nudgeline drafts a natural comment for a lead's post and a personalised email for the lead. You read, edit and approve everything, then post or send it yourself.
 
-1. **comments**: reads already-fetched Facebook posts and drafts short, natural comments.
-2. **emails**: reads a list of emails and drafts a personalized email for each one.
+![Draft only](https://img.shields.io/badge/mode-draft%20only-5444ec)
+![Human in the loop](https://img.shields.io/badge/review-human%20approved-0b7a4b)
+![Python](https://img.shields.io/badge/python-3.10%2B-3776ab)
+![Runs locally](https://img.shields.io/badge/runs-on%20your%20computer-555)
 
-Results go to a CSV in `output/`. You review, edit, and send or post them yourself.
+<img src="docs/screenshots/landing.png" alt="Nudgeline landing page" width="880">
 
-## Setup
+</div>
 
+---
+
+## Contents
+
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [A look at the app](#a-look-at-the-app)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Using the web app, step by step](#using-the-web-app-step-by-step)
+- [Your input file](#your-input-file)
+- [Email templates](#email-templates)
+- [Command line](#command-line)
+- [Output](#output)
+- [Project layout](#project-layout)
+- [Sending responsibly](#sending-responsibly)
+- [Privacy](#privacy)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## What it does
+
+You bring a list of leads: each row has a post, a business name, an owner name and an email. For every row Nudgeline writes:
+
+- **a comment** to reply to their post, short and specific to what they wrote, and
+- **a personalised email** with a subject and body that refer to that same post.
+
+Then it hands the drafts to **you**. Nothing is ever posted or sent by the tool. There is no auto-send, no scraping and no bot account.
+
+| | |
+|---|---|
+| **Guided web app** | Upload, customise, generate, review, export. Opens in your browser. |
+| **Quick comment** | Paste a single post and get one comment to copy. No file needed. |
+| **Human review step** | Every draft is a suggestion until you press **Approve**. Only approved drafts can be exported. |
+| **Your voice** | Pick a tone (friendly, professional, casual) or use your own email template. |
+| **Skips what does not fit** | Posts that are not a real need for your service are marked as skipped instead of getting a forced reply. |
+| **Automatic checks** | Drafts that look risky or off are flagged for a closer look before you approve. |
+| **Language aware** | Replies in the language of the post, including Roman Urdu. |
+| **Safe to stop and resume** | Command line runs save progress as they go. Run the same command again and it continues, retrying rows that failed. |
+| **Bring your own AI key** | Works with Groq, Grok (xAI) or Claude. You use your own account. |
+| **Runs on your computer** | Your lead data stays on your machine. |
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Leads file<br/>CSV, Excel or JSON"] --> B["Read the file and<br/>match the columns"]
+    P["One pasted post<br/>(Quick comment)"] --> C
+    B --> C{"Is this a real need<br/>for your service?"}
+    C -- No --> S["Marked as skipped"]
+    C -- Yes --> D["AI drafts a comment<br/>and a personalised email"]
+    D --> E["Automatic checks<br/>flag anything risky"]
+    E --> F["You review in the browser<br/>edit, approve or reject"]
+    F --> G["Export approved drafts<br/>as a CSV"]
+    G --> H["You post or send<br/>each message yourself"]
 ```
+
+Every draft ends up in one of these states:
+
+```mermaid
+stateDiagram-v2
+    state "Ready" as Ready
+    state "Check this" as Check
+    state "Not a fit" as Skipped
+    [*] --> Ready
+    [*] --> Check: a check found something
+    [*] --> Skipped: not a real need
+    Ready --> Approved: you approve
+    Check --> Approved: you edit, then approve
+    Ready --> Rejected: you reject
+    Check --> Rejected: you reject
+    Approved --> Exported: export CSV
+    Exported --> [*]
+```
+
+And at a high level the pieces fit together like this:
+
+```mermaid
+flowchart LR
+    UI["Browser<br/>(guided web app)"] <--> APP["Local app<br/>127.0.0.1"]
+    APP --> PIPE["Drafting pipeline<br/>comments and emails"]
+    PIPE --> AI["Your AI provider<br/>(your own API key)"]
+    PIPE --> FILES[("CSV files<br/>on your computer")]
+```
+
+---
+
+## A look at the app
+
+### 1. Add your leads
+Drop a CSV, Excel or JSON file. Nudgeline matches your column names automatically and shows what it understood before you run anything. No file handy? Try the built-in samples.
+
+<img src="docs/screenshots/add-leads.png" alt="Add your leads" width="820">
+
+### 2. Tell it about you
+Your name, the service you offer, one line about you, the tone, and how many leads to do this time. Optionally add your own email template.
+
+<img src="docs/screenshots/customize.png" alt="Customise" width="640">
+
+### 3. Review and approve
+A clean summary first, then a list of leads with a detail panel. Read each draft, edit it, and approve or reject. Drafts that need a closer look are marked **Check this**.
+
+<img src="docs/screenshots/review.png" alt="Review drafts" width="880">
+
+Dark mode is supported too:
+
+<img src="docs/screenshots/review-dark.png" alt="Review drafts in dark mode" width="880">
+
+### 4. Just need one comment?
+Use **Quick comment**: paste a post, press **Write comment**, copy the result.
+
+<img src="docs/screenshots/quick-comment.png" alt="Quick comment" width="820">
+
+### How the process is explained on the home page
+
+<img src="docs/screenshots/how-it-works.png" alt="How it works" width="880">
+
+> Screenshots use made-up sample leads.
+
+---
+
+## Requirements
+
+| What | Details |
+|---|---|
+| **Python** | 3.10 or newer (developed and tested on 3.12) |
+| **Operating system** | Windows, macOS or Linux (developed on Windows) |
+| **An AI API key** | One of: Groq (`gsk_...`), xAI Grok (`xai-...`), or Anthropic Claude (`sk-ant-...`) |
+| **A web browser** | Any modern browser, for the local web app |
+| **Python packages** | `openai`, `anthropic`, `httpx`, `openpyxl` (installed from `requirements.txt`) |
+| **Internet** | Only for the calls to your AI provider |
+
+No database, no Docker and no browser automation are needed.
+
+---
+
+## Quick start
+
+**1. Get the code**
+
+```bash
+git clone https://github.com/Hafsa-Anwar65/NudgeLine.git
+cd NudgeLine
+```
+
+**2. Create a virtual environment (recommended) and install**
+
+Windows (PowerShell):
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env        (Windows)   |   cp .env.example .env   (Mac/Linux)
 ```
 
-Open `.env` and fill in **one** key: `GROQ_API_KEY` (Groq, key starts with `gsk_`),
-`XAI_API_KEY` (Grok, `xai-`) or `ANTHROPIC_API_KEY` (Claude, `sk-ant-`). The provider is picked
-from the key. If you set more than one key, add `LLM_PROVIDER=groq` (or `xai` / `anthropic`).
-If the default model name is rejected, copy an exact model name from your provider's console
-into `LLM_MODEL` in `.env`.
+macOS / Linux:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-Then edit `profile.json` with your name, what you offer, and your sign-off.
+**3. Add your AI key**
 
-## Comments
+```powershell
+copy .env.example .env        # Windows
+```
+```bash
+cp .env.example .env          # macOS / Linux
+```
+
+Open `.env` and paste **one** key (the line for your provider). Never commit this file: it is already in `.gitignore`.
+
+**4. Start the app**
+
+```bash
+python app.py
+```
+
+It opens `http://127.0.0.1:8000`. Press `Ctrl+C` in the terminal to stop it.
+
+---
+
+## Using the web app, step by step
+
+1. **Open the app.** Run `python app.py` and use the **Start with demo** button on the home page to see finished example drafts first, or go straight to the app.
+2. **Add your leads.** Drop your file or click to choose it. Check the "Looks good" summary: it shows which of your columns were used for post, business, owner and email.
+3. **Tell it about you.** Fill in your name, the service you offer and one line about you. Pick a tone.
+4. **Choose how many leads.** Start small (3 to 5) to see the style, then do the full list.
+5. *(Optional)* **Use your own email template.** Open the template section and use the placeholders described [below](#email-templates).
+6. **Generate drafts.** Press the button and watch the progress bar. You can leave the page open while it works.
+7. **Review.** Use the summary tiles and filter tabs (Ready, Check this, Approved, Skipped / failed). Click a lead, read the drafts and edit them directly in the boxes. Changes save automatically.
+8. **Approve or reject.** Press **Approve** on each draft you are happy with, or **Approve all ready** for the ones with no warnings. Drafts marked **Check this** always need your own look first.
+9. **Export.** Press **Export approved (CSV)**. Only approved drafts are included.
+10. **Post or send yourself.** Copy each comment or email and use it from your own accounts, in small batches.
+
+---
+
+## Your input file
+
+CSV, Excel (`.xlsx`) or JSON. Column names are matched loosely, so your existing headers usually just work.
+
+| Field | Accepted column names (examples) |
+|---|---|
+| Post | `Post content`, `post_text`, `post`, `content`, `message`, `text` |
+| Business | `Business Name`, `company`, `business`, `page_name` |
+| Owner | `Owner Name`, `Client Name`, `name`, `owner`, `contact` |
+| Email | `Email`, `email_address`, `owner_email` |
+| Website *(optional)* | `website`, `site`, `url` |
+| Post link *(optional)* | `post_url`, `link`, `permalink` |
+
+Example:
+
+| Client Name | Business Name | Post content | Email |
+|---|---|---|---|
+| Amina Rafiq | Brew & Bean Cafe | Opening my cafe next month and need a website with a menu and online reservations. | amina@example.com |
+
+Samples to try are in the `sample/` folder (`old_data.csv` with 5 rows, `more_samples.csv` / `more_samples.xlsx` with 20 varied rows, including posts that are *not* leads and rows with a bad email).
+
+---
+
+## Email templates
+
+Prefer your own wording? Paste a template and the AI only fills in the placeholders:
 
 ```
+Subject: Quick idea for {company}
+
+Hi {first_name},
+
+{post_hook}
+
+I build simple, fast websites for small businesses. Happy to share a few ideas if useful.
+
+Best,
+Your Name
+```
+
+| Placeholder | Filled with |
+|---|---|
+| `{first_name}` | The owner's first name |
+| `{name}` | The owner's full name |
+| `{company}` | The business name |
+| `{post_hook}` | One sentence that refers to their post |
+
+Leave the template empty to let the AI write each email from scratch.
+
+---
+
+## Command line
+
+The same drafting engine is available without the browser:
+
+```bash
 python main.py comments --input sample/posts.json
+python main.py emails   --input sample/leads.csv
+python main.py both     --input sample/more_samples.csv --limit 5
+python main.py approve  --input output/outreach.csv --interactive
 ```
 
-Input: JSON or CSV with fields like `text`, `url`, `author` (other common names such as
-`post_text`, `link`, `author_name` also work; add more in `TEXT_KEYS` inside
-`drafter/comments.py`). Output: `output/comments.csv`.
+| Command | What it does |
+|---|---|
+| `comments` | Drafts comments for already-fetched posts (JSON or CSV) |
+| `emails` | Drafts personalised emails from a CSV or a plain list of emails |
+| `both` | One run, two drafts per row: a comment and an email (CSV, Excel or JSON) |
+| `approve` | The review step for the command line: export only what you approve |
 
-Posts that are not a real need for your service are marked `skipped`.
+Handy options: `--limit 5` (try a few first), `--dry-run` (test everything without calling the AI), `--tone friendly|professional|casual`, `--template path.txt`, `--output path.csv`. Running a command again resumes where it stopped.
 
-## Emails
+Set your name, service and sign-off in `profile.json`.
+
+---
+
+## Output
+
+The web app saves every run under `output/` (this folder is ignored by git). Exports contain only the drafts you approved.
+
+| Column | Meaning |
+|---|---|
+| `name`, `company`, `email` | The lead |
+| `post_text` | Their post |
+| `comment` | The drafted comment |
+| `subject`, `body` | The drafted email |
+| `priority`, `language` | How strongly the post asks for your service, and its language |
+| `qa_flags` | Why a draft was marked **Check this**, if it was |
+| `status` | `draft`, `needs_edit`, `approved`, `rejected`, `skipped` or `error` |
+
+---
+
+## Project layout
 
 ```
-python main.py emails --input sample/leads.csv
-python main.py emails --input sample/leads.csv --fetch-sites
-python main.py emails --input sample/emails.txt
+NudgeLine/
+├── app.py            # starts the local web app
+├── main.py           # command line entry point
+├── profile.json      # your name, service and sign-off
+├── drafter/          # the drafting pipeline (comments, emails, review)
+├── webui/            # the guided web app (HTML, CSS, JavaScript)
+├── frontend/         # the home page
+├── sample/           # example inputs to try
+├── docs/screenshots/ # images used in this README
+├── requirements.txt
+└── .env.example      # copy to .env and add your key
 ```
 
-Input can be:
-- a **CSV** with an `email` column, and optionally `name`, `company`, `website`, `notes`
-  (the more you give, the more personal the email)
-- a **TXT** file with one email per line
-
-`--fetch-sites` fetches each lead's homepage once (plain HTTP, no browser) and gives the
-writer a few real facts, such as the site's headline, and simple signals like "not on HTTPS".
-
-Output: `output/emails.csv` with `subject`, `body`, `personalization` (high/medium/low) and
-`angle`. Your sign-off and opt-out line from `profile.json` are added to every email.
-
-## Comment + email in one run (`both`)
-
-For a list where every row has a post, a business name, the owner's name and an email:
-
-```
-python main.py both --input sample/old_data.csv --limit 5
-```
-
-Input can be CSV, Excel (`.xlsx`) or JSON. Column names are matched loosely, for example
-`Post Content`, `Business Name`, `Owner Name` and `Email` all work (also `post_text`,
-`company`, `name`, `owner`, `website`, `post_url`...).
-
-Output: `output/outreach.csv`, one row per lead, with `comment` (for their post),
-`subject` and `body` (the email), plus notes on why. Rows with no valid email still get a
-comment; posts that are not a real need get no comment (the reason is in `comment_note`).
-
-## Useful options
-
-- `--limit 5` try a few first
-- `--dry-run` test the whole pipeline without calling the API
-- `--output path.csv` choose the output file
-- Re-running the same command resumes and skips items already in the output file
+---
 
 ## Sending responsibly
 
-- Read every draft. Fix anything that sounds off before it goes out.
-- The writer is told to use only facts you provide, but always double-check names and details.
-- Send from your own address in small batches, to people with a real reason to hear from you.
-- Keep the opt-out line, honour replies that say no, and follow the email and anti-spam rules
-  that apply where you and your recipients are.
-- For Facebook, post comments manually. Automated commenting gets accounts restricted.
+Nudgeline writes the first draft. You are responsible for what you send or post.
 
-## New: quality checks, priority, tone, templates and a review step
+- Read every draft and make sure it is true and relevant to that person.
+- Follow the rules of the platform where you comment, and the email rules that apply to you (for example CAN-SPAM, GDPR and local laws). Keep your opt-out line.
+- Go slowly and in small batches. Do not mass-send.
+- Only contact people who have publicly asked for what you offer.
 
-Every draft now goes through automatic checks and a mandatory human review before anything is exported.
+---
 
-- **Priority**: the AI scores how clearly the person is asking for your service (1-5). Rows are sorted high to low (`priority`, `intent_score` columns).
-- **Language**: detected per row (English / Urdu / Roman Urdu / Mixed); replies match the post.
-- **Tone**: `--tone friendly|professional|casual`, or set `"tone"` in `profile.json`.
-- **Your own email template**: `--template sample\email_template.txt`. Placeholders: `{first_name}` `{name}` `{company}` `{post_hook}`. The AI only fills the placeholders and keeps your wording. A first line starting with `Subject:` sets the subject. Put your own sign-off in the template; the opt-out line is added automatically.
-- **Quality checks** (column `qa_flags`): too long, links, hashtags, many emojis, salesy/spam words, ALL CAPS subject, leftover `{placeholders}`, numbers that are not in the source (invented facts), email length. Rows with warnings get status `needs_edit`.
-- **Review page**: each run writes an HTML page next to the CSV (for example `output\outreach.html`). Open it in your browser.
-- **Approve step**: only rows with status `draft` are exported.
+## Privacy
 
-```powershell
-python main.py both --input "my_data.csv" --limit 5 --tone professional --template sample\email_template.txt
-# open output\outreach.html, edit output\outreach.csv if you want (set status to draft for rows you approve)
-python main.py approve --input output\outreach.csv
-# or go through them one by one:
-python main.py approve --input output\outreach.csv --interactive
-```
+- The app runs on **your computer** and listens on `127.0.0.1` only.
+- Your files and drafts are stored in the local `output/` folder.
+- The only data that leaves your machine is the text sent to **your own AI provider** to write the drafts, under your own API key.
+- `.env` (your key) and `output/` are excluded from git. Check `git status` before you push.
 
-The approved rows are saved to `output\outreach_approved.csv`. Nothing is ever posted or sent by the tool; you do that yourself.
+---
 
-If an older output file has different columns, it is kept as `*.old.csv` and a fresh file is started.
+## Troubleshooting
 
-## Web app (frontend)
+| Problem | What to try |
+|---|---|
+| `No API key found` | Open `.env` and paste your key on the matching line, then restart `python app.py`. |
+| `Model not found` / `404` | Your account may not have the default model. Set `LLM_MODEL` in `.env` to a model name from your provider's console. |
+| `Port 8000 is busy` | Run `python app.py --port 8001`. |
+| Drafts show "AI service is busy" | You reached your provider's rate limit. Wait a minute and run again, or try fewer leads. On the command line, running the same command again retries failed rows. |
+| The page looks old after an update | Restart `python app.py`, then press `Ctrl+F5` in the browser. |
+| Excel file not read | Make sure the first row has headers and the file is `.xlsx`. |
 
-```powershell
-cd "E:\Nudge Line\nudgeline"
-python app.py
-```
-Your browser opens `http://127.0.0.1:8000`. Upload your CSV/XLSX/JSON (or use the 5 sample rows), fill in "About you", pick a tone, optionally paste your own email template, then press **Generate drafts**.
-Review each draft in the page, edit the text, **Approve** or **Reject**, and **Export approved CSV**. Tick "Test run" to try the whole flow without an API key.
-The app runs only on your computer (127.0.0.1) and uses the key from `.env`. Nothing is posted or sent. Stop it with Ctrl+C. Port busy? `python app.py --port 8001`.
+---
 
-## Accounts, plans and demo (web app)
+<div align="center">
 
-- **Start with demo**: on the landing page or the app's first screen. Shows finished example drafts. No account, no AI key, nothing is saved. You can edit and approve to try it; exporting asks you to create an account.
-- **Accounts**: create an account in the app (email + password). Each user only sees their own uploads and runs. Data stays on your computer in `output/` (`users.json` has scrypt-hashed passwords). It is a local login, not a hosted service: do not expose the app to the internet.
-- **Subscribe / plans**: Free (10 leads per run), Pro (100), Team (200). **No payment is taken.** Subscribing switches the plan on this computer, which only changes the leads-per-run limit. Prices shown are examples. Real payments would need a provider such as Stripe and a hosted server.
+Nudgeline is under active development.
+Made by [Hafsa Anwar](https://github.com/Hafsa-Anwar65).
 
-## Several AI models with automatic fallback (admin only)
-
-- Nudgeline can use 2-3 or more models. When one runs out of quota, hits a rate limit or errors, the next one takes over **without stopping the run**, and the first one is tried again once it recovers. Set the order with `LLM_CHAIN` in `.env` (see `.env.example`); without it, the order is built from your keys.
-- **Only the admin** sees which model is running and what usage is left: avatar menu → **Admin dashboard** (status per model, requests/tokens today, limits reported by the provider, optional daily budget, Test and Reset buttons). Switch/limit/failure notifications appear there with a red dot on the avatar. Regular users, the run log and exported files never show model names.
-- The admin is the first account created, or the emails in `ADMIN_EMAILS`. Usage and notifications are stored in `output/admin/`.
-- "Left" numbers come from the provider's response headers when sent (Groq does), otherwise from your `@budget`. Providers that report nothing show no figure rather than a guess.
-
-### Adding more (free) providers
-
-Put any of these keys in `.env`: `GROQ_API_KEY`, `GEMINI_API_KEY` (key starts `AIza`), `CEREBRAS_API_KEY` (`csk-`), `OPENROUTER_API_KEY` (`sk-or-`, only `:free` models are used), `XAI_API_KEY`, `ANTHROPIC_API_KEY`. Every key becomes part of the chain. Order: Groq, Gemini, Cerebras, OpenRouter, Grok, Claude (change it with `LLM_PROVIDER=groq,gemini,openrouter`, or fully with `LLM_CHAIN`).
-
-- When a model hits its limit it is put on a short cooldown (the time the provider asks for, otherwise 1 minute) and the next model is used. When the cooldown ends, the **first available model in the order is used again**, so the main model comes back by itself.
-- Free model names change often. For OpenRouter and Gemini the app looks up the currently free/available names; a name that does not exist on your account is skipped automatically and shows as Disabled on the dashboard.
-- Free tiers can be small (for example OpenRouter free: 50 requests/day until you buy $10 of credit). Check each provider's current limits.
+</div>
