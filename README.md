@@ -31,6 +31,7 @@ Nudgeline drafts a natural comment for a lead's post and a personalised email fo
 - [Project layout](#project-layout)
 - [Sending responsibly](#sending-responsibly)
 - [Privacy](#privacy)
+- [License](#license)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -342,6 +343,16 @@ Nudgeline writes the first draft. You are responsible for what you send or post.
 - `.env` (your key) and `output/` are excluded from git. Check `git status` before you push.
 
 ---
+
+## License
+
+Nudgeline is released under the [Functional Source License, Version 1.1, MIT Future License](LICENSE) (FSL-1.1-MIT).
+
+- You can read, run, copy and modify the code for any purpose except a **Competing Use**, which means offering it to others as a commercial product or service that substitutes for Nudgeline.
+- Internal use, learning, research and non-commercial use are all fine.
+- Two years after each version is released, that version automatically becomes available under the MIT license.
+
+This is a source-available license, not an OSI-approved open source license.
 
 ## Troubleshooting
 
