@@ -87,7 +87,7 @@
       <pre class="log">LLM_CHAIN=groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-120b,xai:grok-4
 # optional daily token budget after @ so the bar can show what is left:
 # LLM_CHAIN=groq:llama-3.3-70b-versatile@500000,xai:grok-4@300000</pre>
-      <p class="hint">Without LLM_CHAIN it is built from your keys (three Groq models, then Grok and Claude if their keys are set). "Left" figures come from the provider's response headers when it sends them, otherwise from your budget. Restart <code>python app.py</code> after editing <code>.env</code>.</p>
+      <p class="hint">Without LLM_CHAIN it is built from your keys (up to three models per provider). "Left" figures come from the provider's response headers when it sends them, otherwise from your budget. Restart <code>python app.py</code> after editing <code>.env</code>.</p>
     </details>
   </section>
 

@@ -125,8 +125,8 @@ def build_chain(preferred=""):
         order = [p for p in os.environ.get("LLM_PROVIDER", "").lower().split(",") if p in keys] or list(keys)
         for prov in order:
             models = [legacy] if legacy and prov == order[0] else []
-            if prov == "groq":  # separate limits per model on Groq: three tries before leaving the provider
-                models += [m for m in PREFERRED["groq"] if m not in models][:3 - len(models)]
+            if prov in PREFERRED:  # separate limits per model: up to three models from the same provider
+                models += [m for m in PREFERRED[prov] if m not in models][:max(0, 3 - len(models))]
             else:
                 models += [PROVIDERS[prov]["model"]]
             chain += [Entry(prov, m) for m in models]
