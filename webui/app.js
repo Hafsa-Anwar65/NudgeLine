@@ -91,7 +91,7 @@
       <span class="chip ${info.usable ? 'ok' : 'warn'}">${info.usable ? '✓ Looks good' : 'No usable rows'}</span></div>
       <div class="map">${map.map(([k, v]) => `<span class="chip">${esc(k)} ← ${esc(v)}</span>`).join('')}${missing.map((k) => `<span class="chip warn">${esc(k)}: not found</span>`).join('')}</div>
       ${info.preview.length ? `<table class="mini"><thead><tr><th>Business</th><th>Owner</th><th>Email</th><th>Post</th></tr></thead><tbody>${info.preview.map((p) => `<tr><td>${esc(p.company)}</td><td>${esc(p.owner)}</td><td>${esc(p.email)}</td><td>${esc(p.post)}</td></tr>`).join('')}</tbody></table>` : ''}`;
-    $('f-limit').max = Math.max(1, info.usable); if (Number($('f-limit').value) > info.usable) $('f-limit').value = info.usable;
+    const cap = Math.max(1, Math.min(info.usable, state.user ? state.user.max_leads : info.usable)); $('f-limit').max = cap; if (Number($('f-limit').value) > cap) $('f-limit').value = cap;
     $('run-error').hidden = true; updateRun();
   }
 
@@ -107,6 +107,32 @@
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', (e) => e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]));
   $('sample').addEventListener('click', async () => { try { showFile(await post('/api/sample', {})); } catch (e) { toast(e.message); } });
+  $('sample-more').addEventListener('click', async () => { try { showFile(await post('/api/sample', { which: 'more' })); toast('20 sample leads added'); } catch (e) { toast(e.message); } });
+
+  // ---------- quick comment: paste one post, get one comment ----------
+  async function quickComment() {
+    const post = $('q-post').value.trim();
+    if (post.length < 5) { $('q-hint').textContent = 'Paste the post text first.'; return; }
+    if (!$('f-service').value.trim() || !$('f-about').value.trim()) {
+      $('q-hint').textContent = 'Fill in your service and one line about you first.';
+      $('card-custom').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('f-service').focus(); return;
+    }
+    $('q-go').disabled = true; $('q-again').disabled = true; $('q-go').textContent = 'Writing…'; $('q-hint').textContent = '';
+    try {
+      const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, dry_run: $('f-dry').checked });
+      $('q-out').hidden = false;
+      $('q-chips').innerHTML = `${r.priority ? `<span class="chip acc">${esc(r.priority)} priority${r.intent ? ' · ' + r.intent + '/5 interest' : ''}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}`;
+      $('q-warn').hidden = !(r.flags && r.flags.length); $('q-warn').innerHTML = r.flags && r.flags.length ? `<b>Worth a look:</b> ${esc(r.flags.join(', '))}. Edit it below if you like.` : '';
+      const ok = r.relevant && r.comment;
+      $('q-comment').hidden = !ok; $('q-comment').value = r.comment || '';
+      $('q-copy').hidden = !ok; $('q-again').textContent = ok ? 'Another version' : 'Try again';
+      $('q-note').hidden = ok; $('q-note').textContent = ok ? '' : 'No comment written: ' + (r.reason || 'this post does not look like a request for your service.');
+    } catch (e) { $('q-hint').textContent = e.message; }
+    $('q-go').disabled = false; $('q-again').disabled = false; $('q-go').textContent = 'Write comment';
+  }
+  const post_ = post;
+  $('q-go').addEventListener('click', quickComment); $('q-again').addEventListener('click', quickComment);
+  $('q-copy').addEventListener('click', () => copy($('q-comment').value, 'Comment'));
 
   function updateRun() {
     const why = !state.file ? 'Add your leads first (step 1).' : !$('f-service').value.trim() || !$('f-about').value.trim() ? 'Fill in your service and one line about you (step 2).'

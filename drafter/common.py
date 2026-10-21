@@ -20,6 +20,24 @@ PROVIDERS = {
         "model": "llama-3.3-70b-versatile",
         "base_url": "https://api.groq.com/openai/v1",
     },
+    "gemini": {
+        "env": "GEMINI_API_KEY",
+        "prefix": "AIza",
+        "model": "gemini-2.5-flash",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    },
+    "cerebras": {
+        "env": "CEREBRAS_API_KEY",
+        "prefix": "csk-",
+        "model": "gpt-oss-120b",
+        "base_url": "https://api.cerebras.ai/v1",
+    },
+    "openrouter": {
+        "env": "OPENROUTER_API_KEY",
+        "prefix": "sk-or-",
+        "model": "openai/gpt-oss-20b:free",
+        "base_url": "https://openrouter.ai/api/v1",
+    },
     "xai": {
         "env": "XAI_API_KEY",
         "prefix": "xai-",
@@ -51,10 +69,13 @@ NON_CHAT = ("whisper", "guard", "tts", "orpheus", "safeguard", "embed", "moderat
 # Preferred writing models per provider, best first. Used when your account can't use the default.
 PREFERRED = {
     "groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"],
-    "xai": ["grok-4", "grok-3", "grok-3-mini"],
+    "xai": ["grok-4.3", "grok-4", "grok-3-mini"],
+    "gemini": ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    "cerebras": ["gpt-oss-120b", "qwen-3-32b"],
+    "openrouter": ["openai/gpt-oss-20b:free", "meta-llama/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free"],
 }
 # Reasoning models spend tokens thinking before they answer, so they need extra room.
-REASONING_HINTS = ("gpt-oss", "qwen3", "minimax", "deepseek-r1", "grok-4", "grok-3-mini")
+REASONING_HINTS = ("gpt-oss", "qwen3", "qwen-3", "minimax", "deepseek-r1", "grok-4", "grok-3-mini", "gemini-2.5", "gemini-3")
 
 
 def load_env():

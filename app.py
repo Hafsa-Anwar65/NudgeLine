@@ -10,6 +10,7 @@ Nothing is ever posted or sent: the app only drafts text and exports the rows yo
 import argparse
 import contextlib
 import json
+import random
 import re
 import shutil
 import sys
@@ -424,9 +425,39 @@ class Handler(BaseHTTPRequestHandler):
                     dest.unlink(missing_ok=True)
                     raise
             if url.path == "/api/sample":
-                dest = up / "sample_old_data.csv"
-                shutil.copy(ROOT / "sample" / "old_data.csv", dest)
+                which = (self.json_body() or {}).get("which")
+                src, name = (("more_samples.csv", "sample_20_leads.csv") if which == "more" else ("old_data.csv", "sample_old_data.csv"))
+                dest = up / name
+                shutil.copy(ROOT / "sample" / src, dest)
                 return self.send(200, describe_upload(dest))
+            if url.path == "/api/quick":  # paste one post, get one comment (nothing is saved or posted)
+                d = self.json_body()
+                post = str(d.get("post", "")).strip()[:2000]
+                if len(post) < 5:
+                    raise ValueError("Paste the post text first.")
+                name = str(d.get("name", "")).strip()[:60] or u["name"]
+                service = str(d.get("service", "")).strip()[:200]
+                about = str(d.get("about", "")).strip()[:400]
+                if not service or not about:
+                    raise ValueError("Fill in 'Service you offer' and 'About you' first (step 2 below).")
+                tone = d.get("tone") if d.get("tone") in TONES else "friendly"
+                dry = bool(d.get("dry_run"))
+                if not dry:
+                    load_env()
+                    if not _find_keys():
+                        raise ValueError("AI is not set up yet. Ask the admin to add an API key, or tick 'Test run'.")
+                profile = {"name": name, "service": service, "about": about, "tone": tone}
+                user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
+                            f"Post author: unknown\nPost text:\n{post}")
+                fallback = {"relevant": True, "intent_score": 3, "language": "English", "reason": "test run, no AI used",
+                            "comment": "Test run: the AI comment will appear here."}
+                res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile), user_msg, fallback, max_tokens=450)
+                info = comments.interpret(res)
+                if "error" in info:
+                    raise ValueError(info["error"])
+                return self.send(200, {"relevant": info["relevant"], "comment": info["comment"], "reason": info["reason"],
+                                       "intent": info["intent"], "priority": info["priority"], "language": info["language"],
+                                       "flags": info["flags"]})
             if url.path == "/api/run":
                 d = self.json_body()
                 cfg = {

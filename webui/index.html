@@ -87,7 +87,7 @@
       <pre class="log">LLM_CHAIN=groq:llama-3.3-70b-versatile,groq:openai/gpt-oss-120b,xai:grok-4
 # optional daily token budget after @ so the bar can show what is left:
 # LLM_CHAIN=groq:llama-3.3-70b-versatile@500000,xai:grok-4@300000</pre>
-      <p class="hint">Without LLM_CHAIN it is built from your keys (up to three models per provider). "Left" figures come from the provider's response headers when it sends them, otherwise from your budget. Restart <code>python app.py</code> after editing <code>.env</code>.</p>
+      <p class="hint">Without LLM_CHAIN it is built from your keys in this order: Groq, Gemini, Cerebras, OpenRouter (free models), Grok, Claude (change with LLM_PROVIDER=groq,gemini,...). When a model's limit ends, its cooldown starts and the next model is used; afterwards the first available model in the list is used again. "Left" figures come from the provider's response headers when it sends them, otherwise from your budget. Restart <code>python app.py</code> after editing <code>.env</code>.</p>
     </details>
   </section>
 
@@ -112,6 +112,20 @@
     </div>
 
     <div class="stack">
+      <section class="card quick" id="card-quick">
+        <h2><span class="n">&#9889;</span> Quick comment <em class="opt">no file needed</em></h2>
+        <p class="hint" style="margin:-6px 0 12px">Paste one post and get a comment you can copy. It uses your service, about line and tone from the sections below.</p>
+        <textarea id="q-post" rows="4" maxlength="2000" placeholder="Paste the post text here…"></textarea>
+        <div class="q-row"><button id="q-go" class="btn btn-primary btn-sm" type="button">Write comment</button><span id="q-hint" class="hint"></span></div>
+        <div id="q-out" class="q-out" hidden>
+          <div class="chips" id="q-chips"></div>
+          <div id="q-warn" class="warnbox" hidden></div>
+          <textarea id="q-comment" rows="3" aria-label="Your comment"></textarea>
+          <p id="q-note" class="note" hidden></p>
+          <div class="q-actions"><button id="q-copy" class="btn btn-ok btn-sm" type="button">Copy comment</button><button id="q-again" class="btn btn-ghost btn-sm" type="button">Another version</button></div>
+        </div>
+      </section>
+
       <section class="card" id="card-data">
         <h2><span class="n">1</span> Add your leads</h2>
         <label id="drop" class="drop" tabindex="0">
@@ -120,7 +134,7 @@
           <strong>Drop your file here, or click to choose</strong>
           <span>Each row needs: the post, business name, owner name and email</span>
         </label>
-        <p class="alt">No file handy? <button id="sample" class="link" type="button">Try the 5 sample rows</button></p>
+        <p class="alt">No file handy? <button id="sample" class="link" type="button">Try the 5 sample rows</button> or <button id="sample-more" class="link" type="button">try 20 more varied samples</button></p>
         <div id="file-info" class="file-info" hidden></div>
       </section>
 

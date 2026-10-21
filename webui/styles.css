@@ -265,3 +265,10 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .ev .lvl.warn { background: var(--warn); } .ev .lvl.bad { background: var(--bad); } .ev .lvl.info { background: var(--ok); }
 .adm-help { margin-top: 18px; }
 .acct { position: relative; }
+
+/* quick comment */
+.quick textarea { margin-bottom: 10px; }
+.quick .opt { font-style: normal; font-size: 12.5px; color: var(--muted); font-weight: 600; margin-left: 4px; }
+.q-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.q-out { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
+.q-actions { display: flex; gap: 10px; flex-wrap: wrap; }

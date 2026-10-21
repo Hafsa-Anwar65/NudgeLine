@@ -131,3 +131,11 @@ The app runs only on your computer (127.0.0.1) and uses the key from `.env`. Not
 - **Only the admin** sees which model is running and what usage is left: avatar menu → **Admin dashboard** (status per model, requests/tokens today, limits reported by the provider, optional daily budget, Test and Reset buttons). Switch/limit/failure notifications appear there with a red dot on the avatar. Regular users, the run log and exported files never show model names.
 - The admin is the first account created, or the emails in `ADMIN_EMAILS`. Usage and notifications are stored in `output/admin/`.
 - "Left" numbers come from the provider's response headers when sent (Groq does), otherwise from your `@budget`. Providers that report nothing show no figure rather than a guess.
+
+### Adding more (free) providers
+
+Put any of these keys in `.env`: `GROQ_API_KEY`, `GEMINI_API_KEY` (key starts `AIza`), `CEREBRAS_API_KEY` (`csk-`), `OPENROUTER_API_KEY` (`sk-or-`, only `:free` models are used), `XAI_API_KEY`, `ANTHROPIC_API_KEY`. Every key becomes part of the chain. Order: Groq, Gemini, Cerebras, OpenRouter, Grok, Claude (change it with `LLM_PROVIDER=groq,gemini,openrouter`, or fully with `LLM_CHAIN`).
+
+- When a model hits its limit it is put on a short cooldown (the time the provider asks for, otherwise 1 minute) and the next model is used. When the cooldown ends, the **first available model in the order is used again**, so the main model comes back by itself.
+- Free model names change often. For OpenRouter and Gemini the app looks up the currently free/available names; a name that does not exist on your account is skipped automatically and shows as Disabled on the dashboard.
+- Free tiers can be small (for example OpenRouter free: 50 requests/day until you buy $10 of credit). Check each provider's current limits.

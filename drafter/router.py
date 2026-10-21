@@ -116,6 +116,37 @@ def _parse_chain(text, keys):
     return out
 
 
+_DISCOVER = {}  # provider -> (time, [model ids]); refreshed hourly
+
+
+def discover(prov, key):
+    """Ask the provider which models are really free/available, so stale names don't break the chain."""
+    now = time.time()
+    if prov in _DISCOVER and now - _DISCOVER[prov][0] < 3600:
+        return _DISCOVER[prov][1]
+    found = []
+    try:
+        import httpx
+        if prov == "openrouter":  # free variants only: price 0 for both prompt and completion
+            data = httpx.get("https://openrouter.ai/api/v1/models", timeout=8).json().get("data", [])
+            free = [m["id"] for m in data if m["id"].endswith(":free")
+                    and str(m.get("pricing", {}).get("prompt")) in ("0", "0.0")
+                    and str(m.get("pricing", {}).get("completion")) in ("0", "0.0")]
+            rank = ("gpt-oss", "llama-3.3", "gemma", "qwen", "mistral", "deepseek")
+            free.sort(key=lambda i: next((n for n, w in enumerate(rank) if w in i), len(rank)))
+            found = free[:3]
+        elif prov == "gemini":  # newest Flash models (the free tier is Flash only)
+            data = httpx.get("https://generativelanguage.googleapis.com/v1beta/openai/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=8).json().get("data", [])
+            ids = [m["id"].replace("models/", "") for m in data]
+            flash = [i for i in ids if "flash" in i and not any(w in i for w in ("image", "tts", "live", "audio", "embed", "thinking", "exp"))]
+            found = sorted(flash, reverse=True)[:2]
+    except Exception:
+        found = []
+    _DISCOVER[prov] = (now, found)
+    return found
+
+
 def build_chain(preferred=""):
     """Models to try, best first. LLM_CHAIN wins; otherwise built from the keys that are set."""
     keys = _find_keys()
@@ -126,7 +157,8 @@ def build_chain(preferred=""):
         for prov in order:
             models = [legacy] if legacy and prov == order[0] else []
             if prov in PREFERRED:  # separate limits per model: up to three models from the same provider
-                models += [m for m in PREFERRED[prov] if m not in models][:max(0, 3 - len(models))]
+                pool = discover(prov, keys[prov]) if prov in ("openrouter", "gemini") else []
+                models += list(dict.fromkeys(m for m in pool + PREFERRED[prov] if m not in models))[:max(0, (4 if prov == "groq" else 3) - len(models))]
             else:
                 models += [PROVIDERS[prov]["model"]]
             chain += [Entry(prov, m) for m in models]
@@ -138,6 +170,9 @@ def build_chain(preferred=""):
 
 # ---------- error handling ----------
 def _seconds_from_message(msg):
+    g = re.search(r"retrydelay\W+(\d+)s", msg)
+    if g:
+        return int(g.group(1)) + 1
     m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m(?!s))?(?:([\d.]+)s)?", msg)
     if m and any(m.groups()):
         h, mi, s = (float(x) if x else 0 for x in m.groups())
@@ -151,8 +186,6 @@ def classify(e):
     code = getattr(e, "status_code", None)
     if name in ("AuthenticationError", "PermissionDeniedError") or code in (401, 403):
         return "disable", 0, "API key rejected"
-    if any(w in msg for w in ("credit balance", "billing", "insufficient")):
-        return "cool", 6 * 3600, "out of credit"
     if code == 404 or name == "NotFoundError" or (name == "BadRequestError" and "model" in msg):
         return "disable", 0, "model not available on this account"
     if code == 429 or name == "RateLimitError" or "rate limit" in msg or "quota" in msg:
@@ -162,8 +195,10 @@ def classify(e):
         except Exception:
             pass
         retry = retry or _seconds_from_message(msg)
-        daily = any(w in msg for w in ("per day", "tpd", "rpd", "quota", "daily"))
-        return "cool", retry or (3600 if daily else 30), "daily limit reached" if daily or retry > 600 else "rate limited"
+        daily = any(w in msg for w in ("per day", "perday", "tokens per day", "(tpd)", "(rpd)", "daily"))
+        return "cool", max(retry, 900) if daily else (retry or 60), "daily limit reached" if daily or retry > 900 else "rate limited"
+    if any(w in msg for w in ("credit balance", "insufficient funds", "insufficient credit", "payment required")) or code == 402:
+        return "cool", 6 * 3600, "out of credit"
     if (code and code >= 500) or name in ("APIConnectionError", "APITimeoutError", "InternalServerError"):
         return "cool", 60, "provider error"
     return None, 0, ""

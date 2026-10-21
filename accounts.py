@@ -75,8 +75,9 @@ def is_admin(u, users=None):
 
 def public(u, users=None):
     plan = PLANS.get(u.get("plan"), PLANS["free"])
-    return {"admin": is_admin(u, users), "id": u["id"], "email": u["email"], "name": u["name"], "plan": u.get("plan", "free"),
-            "plan_name": plan["name"], "max_leads": plan["max_leads"], "created": u.get("created", "")}
+    admin = is_admin(u, users)
+    return {"admin": admin, "id": u["id"], "email": u["email"], "name": u["name"], "plan": u.get("plan", "free"),
+            "plan_name": plan["name"], "max_leads": 200 if admin else plan["max_leads"], "created": u.get("created", "")}
 
 
 def signup(email, name, pw):

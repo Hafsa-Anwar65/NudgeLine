@@ -17,7 +17,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 FIELD_MAP = {
     "email": ("email", "e_mail", "email_address", "emails", "owner_email", "business_email"),
     "name": ("name", "owner", "owner_name", "business_owner", "contact", "contact_name",
-             "full_name", "first_name", "author", "author_name"),
+             "full_name", "first_name", "author", "author_name", "client_name", "client"),
     "company": ("company", "company_name", "business", "business_name", "page_name",
                 "organization", "organisation"),
     "website": ("website", "business_website", "website_url", "site", "web"),
