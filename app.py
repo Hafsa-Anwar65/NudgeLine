@@ -43,7 +43,7 @@ STATIC = {  # URL -> (file, content type)
     "/styles.css": (WEB / "styles.css", "text/css; charset=utf-8"),
     "/app.js": (WEB / "app.js", "application/javascript; charset=utf-8"),
 }
-EDITABLE = ("comment", "subject", "body")
+EDITABLE = ("comment", "comment_long", "subject", "body")
 FILE_LOCK = threading.Lock()
 JOBS = {}  # user id -> job state (each user has their own run)
 
@@ -55,7 +55,7 @@ JOB_LOCK = threading.Lock()
 
 # ---------- helpers ----------
 def defaults(uid, user):
-    d = {"name": user["name"], "service": "", "about": "", "tone": "friendly"}
+    d = {"name": user["name"], "service": "", "about": "", "tone": "friendly", "length": "short"}
     p = udir(uid) / "settings.json"
     if p.exists():
         try:
@@ -66,7 +66,7 @@ def defaults(uid, user):
 
 
 def save_settings(uid, cfg):
-    keep = {k: cfg[k] for k in ("name", "service", "about", "tone")}
+    keep = {k: cfg[k] for k in ("name", "service", "about", "tone", "length")}
     (udir(uid) / "settings.json").write_text(json.dumps(keep), encoding="utf-8")
 
 
@@ -157,6 +157,7 @@ def worker(uid, cfg, out_path):
             name = cfg["name"] or "Me"
             profile = {
                 "name": name, "service": cfg["service"], "about": cfg["about"], "tone": cfg["tone"],
+                "comment_length": cfg["length"],
                 "signoff": name, "opt_out_line": "If this isn't relevant, just reply 'no' and I won't email again.",
             }
             template_path = None
@@ -171,7 +172,7 @@ def worker(uid, cfg, out_path):
             llm = LLM(dry_run=cfg["dry_run"], model=cfg["model"])
             both.run(args, profile, llm)
             meta = {
-                "source": re.sub(r"^\d+_", "", cfg["file"]), "tone": cfg["tone"], "dry_run": cfg["dry_run"],
+                "source": re.sub(r"^\d+_", "", cfg["file"]), "tone": cfg["tone"], "length": cfg["length"], "dry_run": cfg["dry_run"],
                 "model": "test run (no AI)" if cfg["dry_run"] else llm.summary(),  # admin-only, stripped for users
                 "seconds": round(time.time() - started, 1), "finished": datetime.now().isoformat(timespec="seconds"),
             }
@@ -235,6 +236,8 @@ def update_row(uid, run_id, row_id, payload):
         if not row:
             raise FileNotFoundError("row not found")
         for k in EDITABLE:
+            if k == "comment_long" and not row.get("comment_long"):
+                continue  # only rows written in "both" mode have a longer comment
             if k in payload and isinstance(payload[k], str):
                 row[k] = payload[k]
         decision = payload.get("decision")
@@ -441,21 +444,27 @@ class Handler(BaseHTTPRequestHandler):
                 if not service or not about:
                     raise ValueError("Fill in 'Service you offer' and 'About you' first (step 2 below).")
                 tone = d.get("tone") if d.get("tone") in TONES else "friendly"
+                length = d.get("length") if d.get("length") in comments.LENGTHS else "short"
                 dry = bool(d.get("dry_run"))
                 if not dry:
                     load_env()
                     if not _find_keys():
                         raise ValueError("AI is not set up yet. Ask the admin to add an API key, or tick 'Test run'.")
-                profile = {"name": name, "service": service, "about": about, "tone": tone}
+                profile = {"name": name, "service": service, "about": about, "tone": tone, "comment_length": length}
                 user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
                             f"Post author: unknown\nPost text:\n{post}")
                 fallback = {"relevant": True, "intent_score": 3, "language": "English", "reason": "test run, no AI used",
                             "comment": "Test run: the AI comment will appear here."}
-                res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile), user_msg, fallback, max_tokens=450)
-                info = comments.interpret(res)
+                if length == "long":
+                    fallback["comment"] = "Test run: a longer AI comment will appear here, with more detail about how you would help."
+                if length == "both":
+                    fallback["comment_long"] = "Test run: a longer AI comment will appear here, with more detail about how you would help."
+                res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile, length), user_msg, fallback,
+                                                max_tokens=comments.token_budget(length))
+                info = comments.interpret(res, length)
                 if "error" in info:
                     raise ValueError(info["error"])
-                return self.send(200, {"relevant": info["relevant"], "comment": info["comment"], "reason": info["reason"],
+                return self.send(200, {"relevant": info["relevant"], "comment": info["comment"], "comment_long": info["comment_long"], "reason": info["reason"],
                                        "intent": info["intent"], "priority": info["priority"], "language": info["language"],
                                        "flags": info["flags"]})
             if url.path == "/api/run":
@@ -466,6 +475,7 @@ class Handler(BaseHTTPRequestHandler):
                     "service": str(d.get("service", "")).strip()[:200],
                     "about": str(d.get("about", "")).strip()[:400],
                     "tone": d.get("tone") if d.get("tone") in TONES else "friendly",
+                    "length": d.get("length") if d.get("length") in comments.LENGTHS else "short",
                     "template": str(d.get("template", ""))[:3000],
                     "limit": max(1, min(int(d.get("limit") or 5), 200)),
                     "model": re.sub(r"[^A-Za-z0-9._:/-]", "", str(d.get("model", "")))[:80] if u["admin"] else "",

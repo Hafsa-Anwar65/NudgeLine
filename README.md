@@ -52,6 +52,7 @@ Then it hands the drafts to **you**. Nothing is ever posted or sent by the tool.
 | **Quick comment** | Paste a single post and get one comment to copy. No file needed. |
 | **Human review step** | Every draft is a suggestion until you press **Approve**. Only approved drafts can be exported. |
 | **Your voice** | Pick a tone (friendly, professional, casual) or use your own email template. |
+| **Comment length** | Choose a short comment, a longer one, or **both** at once and pick the one that fits the post. |
 | **Skips what does not fit** | Posts that are not a real need for your service are marked as skipped instead of getting a forced reply. |
 | **Automatic checks** | Drafts that look risky or off are flagged for a closer look before you approve. |
 | **Language aware** | Replies in the language of the post, including Roman Urdu. |
@@ -114,7 +115,7 @@ Drop a CSV, Excel or JSON file. Nudgeline matches your column names automaticall
 <img src="docs/screenshots/add-leads.png" alt="Add your leads" width="820">
 
 ### 2. Tell it about you
-Your name, the service you offer, one line about you, the tone, and how many leads to do this time. Optionally add your own email template.
+Your name, the service you offer, one line about you, the tone, the comment length (short, longer or both), and how many leads to do this time. Optionally add your own email template.
 
 <img src="docs/screenshots/customize.png" alt="Customise" width="640">
 
@@ -205,7 +206,7 @@ It opens `http://127.0.0.1:8000`. Press `Ctrl+C` in the terminal to stop it.
 
 1. **Open the app.** Run `python app.py` and use the **Start with demo** button on the home page to see finished example drafts first, or go straight to the app.
 2. **Add your leads.** Drop your file or click to choose it. Check the "Looks good" summary: it shows which of your columns were used for post, business, owner and email.
-3. **Tell it about you.** Fill in your name, the service you offer and one line about you. Pick a tone.
+3. **Tell it about you.** Fill in your name, the service you offer and one line about you. Pick a tone and a comment length.
 4. **Choose how many leads.** Start small (3 to 5) to see the style, then do the full list.
 5. *(Optional)* **Use your own email template.** Open the template section and use the placeholders described [below](#email-templates).
 6. **Generate drafts.** Press the button and watch the progress bar. You can leave the page open while it works.
@@ -355,7 +356,7 @@ Nudgeline writes the first draft. You are responsible for what you send or post.
 
 </div>
 
-Nudgeline is released under the **[Functional Source License, Version 1.1, MIT Future License](LICENSE)** (FSL-1.1-MIT), Copyright 2026 Hafsa Anwar.
+Nudgeline is released under the **[Functional Source License, Version 1.1, MIT Future License](LICENSE.md)** (FSL-1.1-MIT), Copyright 2026 Hafsa Anwar.
 
 In plain words: the code is open for you to read, run and learn from, but you cannot take it and sell a competing product.
 
@@ -388,7 +389,7 @@ Yes, for your own outreach and internal work. Selling it, or a hosted version of
 **I want to build a product with it.**
 Open an [issue](https://github.com/Hafsa-Anwar65/NudgeLine/issues) to talk about a commercial licence.
 
-The full legal text is in [`LICENSE`](LICENSE). If this summary and the license ever differ, the license is the one that counts.
+The full legal text is in [`LICENSE`](LICENSE.md). If this summary and the license ever differ, the license is the one that counts.
 
 ## Troubleshooting
 

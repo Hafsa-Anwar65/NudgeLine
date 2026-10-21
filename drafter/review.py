@@ -63,6 +63,7 @@ def write_html(csv_path):
 {f'<p class="warn">&#9888; {e(r["qa_flags"])}</p>' if r.get('qa_flags') else ''}
 <p><b>Post:</b> {e(r.get('post_text') or r.get('post'))}</p>
 <p><b>Comment:</b> {e(comment) or '<i>' + e(r.get('comment_note') or r.get('reason')) + '</i>'}</p>
+{f'<p><b>Longer comment:</b> {e(r["comment_long"])}</p>' if r.get('comment_long') else ''}
 {f'<p><b>Subject:</b> {e(subject)}</p><pre>{e(body)}</pre>' if subject or body else ''}
 </section>""")
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -103,6 +104,8 @@ def approve(args):
                 print(f"  POST: {(r.get('post_text') or r.get('post'))[:300]}")
             if r.get("comment"):
                 print(f"  COMMENT: {r['comment']}")
+            if r.get("comment_long"):
+                print(f"  LONGER COMMENT: {r['comment_long']}")
             if r.get("subject") or r.get("body"):
                 print(f"  SUBJECT: {r.get('subject', '')}\n  EMAIL:\n{r.get('body', '')}")
             while True:

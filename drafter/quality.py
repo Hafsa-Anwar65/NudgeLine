@@ -14,15 +14,15 @@ SENTENCE_END = re.compile(r"[.!?۔؟]+(\s|$)")
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 
-def comment_flags(comment):
-    """Warnings for a drafted comment (empty list = clean)."""
+def comment_flags(comment, long=False):
+    """Warnings for a drafted comment (empty list = clean). long=True uses the longer limits."""
     if not comment:
         return []
     flags = []
-    if len(comment) > 320:
+    if len(comment) > (900 if long else 320):
         flags.append("comment too long")
-    if len(SENTENCE_END.findall(comment)) > 3:
-        flags.append("comment over 3 sentences")
+    if len(SENTENCE_END.findall(comment)) > (8 if long else 3):
+        flags.append("comment over 8 sentences" if long else "comment over 3 sentences")
     if LINK.search(comment):
         flags.append("link in comment")
     if re.search(r"#\w", comment):

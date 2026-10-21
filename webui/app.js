@@ -2,7 +2,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const state = { file: null, tone: 'friendly', tones: [], rows: [], meta: {}, run: '', filter: 'all', q: '', sel: null,
+  const state = { file: null, tone: 'friendly', length: 'short', tones: [], rows: [], meta: {}, run: '', filter: 'all', q: '', sel: null,
     view: 'setup', running: false, hasKey: false, poll: null, runs: [], user: null, plans: {}, demo: false, wantPlan: '', authTab: 'signup' };
 
   const TONE_DESC = { friendly: 'Warm and approachable. A good default.', professional: 'Polished and respectful, still human.', casual: 'Relaxed and conversational, like a quick message.' };
@@ -28,7 +28,7 @@
     const d = JSON.parse(opts.body || '{}');
     if (path.startsWith('/api/bulk')) { let n = 0; state.rows.forEach((r) => { if (r.status === 'draft') { r.status = 'approved'; n++; } }); return { approved: n }; }
     const row = state.rows.find((r) => r.id === d.id); if (!row) throw new Error('Lead not found');
-    ['comment', 'subject', 'body'].forEach((k) => { if (typeof d[k] === 'string') row[k] = d[k]; });
+    ['comment', 'comment_long', 'subject', 'body'].forEach((k) => { if (typeof d[k] === 'string') row[k] = d[k]; });
     if (d.decision === 'approve') row.status = 'approved'; else if (d.decision === 'reject') row.status = 'rejected';
     else if (d.decision === 'reset') row.status = row.qa_flags ? 'needs_edit' : 'draft';
     return row;
@@ -82,6 +82,19 @@
     $('tone-desc').textContent = TONE_DESC[state.tone] || '';
   }
 
+  const LENGTHS = [['short', 'Short'], ['long', 'Longer'], ['both', 'Both']];
+  const LENGTH_DESC = { short: '1 to 3 sentences, quick and easy to post.', long: 'A fuller reply of 4 to 7 sentences with more detail.', both: 'Writes a short and a longer version, so you can pick the one that fits.' };
+  function renderLength() {
+    const box = $('length'); box.innerHTML = '';
+    LENGTHS.forEach(([v, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'radio'); b.textContent = label; b.setAttribute('aria-checked', String(v === state.length));
+      b.addEventListener('click', () => { state.length = v; renderLength(); });
+      box.appendChild(b);
+    });
+    $('length-desc').textContent = LENGTH_DESC[state.length] || '';
+  }
+
   function showFile(info) {
     state.file = info;
     const el = $('file-info'); el.hidden = false;
@@ -119,13 +132,15 @@
     }
     $('q-go').disabled = true; $('q-again').disabled = true; $('q-go').textContent = 'Writing…'; $('q-hint').textContent = '';
     try {
-      const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, dry_run: $('f-dry').checked });
+      const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, length: state.length, dry_run: $('f-dry').checked });
       $('q-out').hidden = false;
       $('q-chips').innerHTML = `${r.priority ? `<span class="chip acc">${esc(r.priority)} priority${r.intent ? ' · ' + r.intent + '/5 interest' : ''}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}`;
       $('q-warn').hidden = !(r.flags && r.flags.length); $('q-warn').innerHTML = r.flags && r.flags.length ? `<b>Worth a look:</b> ${esc(r.flags.join(', '))}. Edit it below if you like.` : '';
       const ok = r.relevant && r.comment;
       $('q-comment').hidden = !ok; $('q-comment').value = r.comment || '';
-      $('q-copy').hidden = !ok; $('q-again').textContent = ok ? 'Another version' : 'Try again';
+      const both = ok && !!r.comment_long;
+      $('q-lbl-short').hidden = !both; $('q-long-wrap').hidden = !both; $('q-long').value = r.comment_long || '';
+      $('q-copy').hidden = !ok || both; $('q-again').textContent = ok ? 'Another version' : 'Try again';
       $('q-note').hidden = ok; $('q-note').textContent = ok ? '' : 'No comment written: ' + (r.reason || 'this post does not look like a request for your service.');
     } catch (e) { $('q-hint').textContent = e.message; }
     $('q-go').disabled = false; $('q-again').disabled = false; $('q-go').textContent = 'Write comment';
@@ -133,6 +148,8 @@
   const post_ = post;
   $('q-go').addEventListener('click', quickComment); $('q-again').addEventListener('click', quickComment);
   $('q-copy').addEventListener('click', () => copy($('q-comment').value, 'Comment'));
+  $('q-copy-short').addEventListener('click', () => copy($('q-comment').value, 'Short comment'));
+  $('q-copy-long').addEventListener('click', () => copy($('q-long').value, 'Longer comment'));
 
   function updateRun() {
     const why = !state.file ? 'Add your leads first (step 1).' : !$('f-service').value.trim() || !$('f-about').value.trim() ? 'Fill in your service and one line about you (step 2).'
@@ -147,7 +164,7 @@
     $('run-error').hidden = true;
     try {
       await post('/api/run', { file: state.file.file, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value,
-        tone: state.tone, template: $('f-template').value, model: $('f-model').value, limit: Number($('f-limit').value) || 5, dry_run: $('f-dry').checked });
+        tone: state.tone, length: state.length, template: $('f-template').value, model: $('f-model').value, limit: Number($('f-limit').value) || 5, dry_run: $('f-dry').checked });
       state.running = true; $('run').textContent = 'Writing your drafts…'; $('progress').hidden = false; $('bar-fill').style.width = '4%';
       $('progress-text').textContent = 'Starting…'; updateRun(); poll();
     } catch (e) { $('run-error').textContent = e.message; $('run-error').hidden = false; }
@@ -272,8 +289,9 @@
       <div class="chips">${r.priority ? `<span class="chip acc">${esc(r.priority)} priority${intent ? ' · ' + intent : ''}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}</div>
       ${r.qa_flags ? `<div class="warnbox"><b>Worth a look:</b> ${esc(r.qa_flags)}. Edit the text below, then approve.</div>` : ''}
       ${r.post_text ? `<p class="post"><b>Their post:</b> ${esc(r.post_text)}</p>` : ''}
-      ${r.comment ? `<div class="blk"><div class="blk-h">Comment to post<button class="copy" data-copy="comment" type="button">Copy</button></div><textarea data-f="comment" rows="3">${esc(r.comment)}</textarea></div>`
+      ${r.comment ? `<div class="blk"><div class="blk-h">${r.comment_long ? 'Short comment' : 'Comment to post'}<button class="copy" data-copy="comment" type="button">Copy</button></div><textarea data-f="comment" rows="3">${esc(r.comment)}</textarea></div>`
         : `<p class="note">No comment: ${esc((r.comment_note || '').replace(/^skipped:\s*/, '') || 'nothing to reply to')}</p>`}
+      ${r.comment && r.comment_long ? `<div class="blk long"><div class="blk-h">Longer comment<button class="copy" data-copy="comment_long" type="button">Copy</button></div><textarea data-f="comment_long" rows="7">${esc(r.comment_long)}</textarea></div>` : ''}
       ${hasEmail ? `<div class="blk"><div class="blk-h">Email<button class="copy" data-copy="email" type="button">Copy</button></div><input data-f="subject" type="text" value="${esc(r.subject)}" aria-label="Email subject"><textarea data-f="body" rows="10" style="margin-top:8px">${esc(r.body)}</textarea></div>`
         : (r.angle ? `<p class="note">No email: ${esc(r.angle)}</p>` : '')}
       <div class="d-actions">
@@ -290,11 +308,11 @@
       try { Object.assign(r, await post('/api/update', { run: state.run, id: r.id, [x.dataset.f]: x.value })); flash(); renderList(); } catch (e) { toast(e.message); }
     }));
     box.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () =>
-      b.dataset.copy === 'comment' ? copy(val('comment'), 'Comment') : copy(`Subject: ${val('subject')}\n\n${val('body')}`, 'Email')));
+      b.dataset.copy === 'comment' ? copy(val('comment'), r.comment_long ? 'Short comment' : 'Comment') : b.dataset.copy === 'comment_long' ? copy(val('comment_long'), 'Longer comment') : copy(`Subject: ${val('subject')}\n\n${val('body')}`, 'Email')));
     box.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async () => {
       if (b.dataset.act === 'approve' && r.qa_flags && !confirm('This draft has warnings:\n\n' + r.qa_flags + '\n\nApprove it anyway?')) return;
       try {
-        Object.assign(r, await post('/api/update', { run: state.run, id: r.id, comment: val('comment'), subject: val('subject'), body: val('body'), decision: b.dataset.act }));
+        Object.assign(r, await post('/api/update', { run: state.run, id: r.id, comment: val('comment'), comment_long: val('comment_long'), subject: val('subject'), body: val('body'), decision: b.dataset.act }));
         if (b.dataset.act !== 'reset') nextOpen(r.id); renderAll();
       } catch (e) { toast(e.message); }
     }));
@@ -444,6 +462,8 @@
     state.tones = s.tones; const d = s.defaults;
     $('f-name').value = d.name || ''; $('f-service').value = d.service || ''; $('f-about').value = d.about || '';
     if (s.tones.includes(d.tone)) state.tone = d.tone;
+    if (['short', 'long', 'both'].includes(d.length)) state.length = d.length;
+    renderLength();
     renderTone(); $('f-dry').checked = !s.keys.length;
     $('f-model').closest('label').hidden = !state.user.admin;
     $('demo-banner').hidden = true; $('run-select').disabled = false; $('export').textContent = 'Export approved (CSV)';

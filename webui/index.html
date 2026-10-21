@@ -120,7 +120,12 @@
         <div id="q-out" class="q-out" hidden>
           <div class="chips" id="q-chips"></div>
           <div id="q-warn" class="warnbox" hidden></div>
+          <div class="q-lbl" id="q-lbl-short" hidden>Short <button id="q-copy-short" class="copy" type="button">Copy</button></div>
           <textarea id="q-comment" rows="3" aria-label="Your comment"></textarea>
+          <div id="q-long-wrap" hidden>
+            <div class="q-lbl">Longer <button id="q-copy-long" class="copy" type="button">Copy</button></div>
+            <textarea id="q-long" rows="6" aria-label="Your longer comment"></textarea>
+          </div>
           <p id="q-note" class="note" hidden></p>
           <div class="q-actions"><button id="q-copy" class="btn btn-ok btn-sm" type="button">Copy comment</button><button id="q-again" class="btn btn-ghost btn-sm" type="button">Another version</button></div>
         </div>
@@ -148,6 +153,10 @@
         <div class="f">How should it sound?
           <div id="tone" class="seg" role="radiogroup" aria-label="Tone"></div>
           <small id="tone-desc" class="hint"></small>
+        </div>
+        <div class="f">How long should the comment be?
+          <div id="length" class="seg" role="radiogroup" aria-label="Comment length"></div>
+          <small id="length-desc" class="hint"></small>
         </div>
         <div class="grid2">
           <label class="f">How many leads this time?<input id="f-limit" type="number" min="1" max="200" value="5"></label>

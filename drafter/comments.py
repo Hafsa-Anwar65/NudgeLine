@@ -26,20 +26,30 @@ STYLE_HINTS = [
 
 OUTPUT_FIELDS = [
     "post_id", "priority", "intent_score", "language", "post_url", "author", "post_text",
-    "relevant", "comment", "reason", "qa_flags", "status",
+    "relevant", "comment", "comment_long", "reason", "qa_flags", "status",
 ]
 
+LENGTHS = ("short", "long", "both")  # short = 1-3 sentences, long = a fuller reply, both = one of each
 
-def interpret(res):
-    """Turn the model's JSON into clean fields. Returns a dict, or {"error": msg}."""
+
+def interpret(res, length="short"):
+    """Turn the model's JSON into clean fields. Returns a dict, or {"error": msg}.
+
+    "comment" is the main draft (short, or long when length is "long").
+    "comment_long" is only filled when length is "both" (the fuller alternative).
+    """
     if "_error" in res:
         return {"error": res["_error"]}
     relevant = bool(res.get("relevant"))
     comment = (res.get("comment") or "").strip() if relevant else ""
+    comment_long = (res.get("comment_long") or "").strip() if relevant and length == "both" else ""
     intent = quality.clamp_intent(res.get("intent_score"))
-    flags = quality.comment_flags(comment)
+    flags = quality.comment_flags(comment, long=(length == "long"))
+    flags += ["longer version: " + f for f in quality.comment_flags(comment_long, long=True)]
+    if length == "both" and comment and not comment_long:
+        flags.append("longer version missing")
     return {
-        "relevant": relevant, "comment": comment, "reason": res.get("reason", ""),
+        "relevant": relevant, "comment": comment, "comment_long": comment_long, "reason": res.get("reason", ""),
         "intent": intent, "language": str(res.get("language") or ""),
         "priority": quality.priority(intent, bool(comment)), "flags": flags,
     }
@@ -92,14 +102,28 @@ def load_posts(path):
     return posts
 
 
-def build_system_prompt(profile):
+LENGTH_RULES = {
+    "short": "- 1 to 3 short sentences, ideally under 40 words.",
+    "long": ("- A fuller reply: 4 to 7 sentences, roughly 70 to 130 words, in one or two short paragraphs. "
+             "Say more about how you would approach their specific situation, but stay conversational."),
+    "both": ("- Write TWO versions of the same reply. \"comment\" is the SHORT one: 1 to 3 short sentences, "
+             "ideally under 40 words. \"comment_long\" is the LONGER one: 4 to 7 sentences, roughly 70 to 130 words, "
+             "in one or two short paragraphs, with more detail on how you would approach their specific situation. "
+             "Both must take the same angle and the same tone."),
+}
+
+
+def build_system_prompt(profile, length="short"):
+    length = length if length in LENGTHS else "short"
     name, service, about = profile["name"], profile["service"], profile["about"]
+    one = "TWO versions of the comment" if length == "both" else "ONE comment"
+    json_comment = '"comment": "the short comment text or empty string", "comment_long": "the longer comment or empty string"' if length == "both" else '"comment": "the comment text or empty string"'
     return f"""You help {name} write replies to Facebook posts. {name} offers: {service}. {about}
 
-Write ONE comment per post that sounds like a real, helpful person, not a marketer.
+Write {one} per post that sounds like a real, helpful person, not a marketer.
 
 Rules:
-- 1 to 3 short sentences, ideally under 40 words.
+{LENGTH_RULES[length]}
 - Mention a specific detail from the post so it is clearly a reply to THIS post.
 - Match the language of the post (English, Urdu written in Roman script, or a mix). Your own tone: {tone_line(profile)}.
 - Be helpful first: a tip, a useful question, or encouragement. Only invite a DM if the post clearly asks for someone to provide the service.
@@ -109,7 +133,11 @@ Rules:
 - If the post is not a genuine need or not related to {service}, mark it not relevant and write no comment.
 
 Reply with ONLY a JSON object, nothing else:
-{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = barely related), "language": "English|Urdu|Roman Urdu|Mixed|Other", "comment": "the comment text or empty string", "reason": "one short line on why"}}"""
+{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = barely related), "language": "English|Urdu|Roman Urdu|Mixed|Other", {json_comment}, "reason": "one short line on why"}}"""
+
+
+def token_budget(length):
+    return {"short": 450, "long": 650, "both": 900}.get(length, 450)
 
 
 def run(args, profile, llm):
@@ -121,7 +149,8 @@ def run(args, profile, llm):
         todo = todo[: args.limit]
     print(f"{len(posts)} posts loaded, {len(done)} already done, {len(todo)} to process.")
 
-    system = build_system_prompt(profile)
+    length = profile.get("comment_length", "short")
+    system = build_system_prompt(profile, length)
     f, writer = open_writer(args.output, OUTPUT_FIELDS)
     with f:
         for i, post in enumerate(todo, 1):
@@ -136,11 +165,11 @@ def run(args, profile, llm):
                 "comment": "[dry-run] a drafted comment would appear here",
                 "reason": "dry run, no API call made",
             }
-            res = llm.ask_json(system, user_msg, fallback, max_tokens=400)
+            res = llm.ask_json(system, user_msg, fallback, max_tokens=token_budget(length))
 
-            info = interpret(res)
+            info = interpret(res, length)
             if "error" in info:
-                info = {"relevant": False, "comment": "", "reason": f"error: {info['error']}", "intent": 0,
+                info = {"relevant": False, "comment": "", "comment_long": "", "reason": f"error: {info['error']}", "intent": 0,
                         "language": "", "priority": "", "flags": []}
                 status = "error"
             elif not info["comment"]:
@@ -160,6 +189,7 @@ def run(args, profile, llm):
                 "post_text": post["post_text"][:500].replace("\n", " "),
                 "relevant": relevant,
                 "comment": comment,
+                "comment_long": info.get("comment_long", ""),
                 "reason": reason,
                 "status": status,
             })

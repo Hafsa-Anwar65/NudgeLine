@@ -272,3 +272,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .q-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .q-out { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
 .q-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* comment length */
+#length { grid-template-columns: repeat(3, 1fr); }
+#length button { text-transform: none; }
+.q-lbl { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.q-lbl .copy { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 700; color: var(--accent-text); background: none; border: 0; cursor: pointer; }
+#q-long-wrap { display: grid; gap: 6px; }
+.blk + .blk.long { margin-top: 12px; }

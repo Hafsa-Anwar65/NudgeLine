@@ -18,7 +18,7 @@ from .common import done_ids, open_writer, prepare_output
 
 OUTPUT_FIELDS = [
     "id", "priority", "intent_score", "language", "name", "company", "email", "post_url", "post_text",
-    "comment", "comment_note", "subject", "body", "personalization", "angle", "qa_flags", "status",
+    "comment", "comment_long", "comment_note", "subject", "body", "personalization", "angle", "qa_flags", "status",
 ]
 
 EMAIL_EXTRA_RULE = (
@@ -99,7 +99,8 @@ def run(args, profile, llm):
     if template:
         print("Using your email template: the AI only fills the placeholders.")
 
-    comment_system = comments.build_system_prompt(profile)
+    length = profile.get("comment_length", "short")
+    comment_system = comments.build_system_prompt(profile, length)
     email_system = emails.make_system(profile, template)
     if not template:
         email_system += EMAIL_EXTRA_RULE
@@ -112,7 +113,7 @@ def run(args, profile, llm):
                 "name": rec["name"], "company": rec["company"],
                 "email": rec["email"], "post_url": rec["post_url"],
                 "post_text": rec["notes"][:500].replace("\n", " "),
-                "comment": "", "comment_note": "", "subject": "", "body": "",
+                "comment": "", "comment_long": "", "comment_note": "", "subject": "", "body": "",
                 "personalization": "", "angle": "", "qa_flags": "", "status": "",
             }
             failed = False
@@ -131,7 +132,11 @@ def run(args, profile, llm):
                     "comment": "[dry-run] a drafted comment would appear here",
                     "reason": "dry run, no API call made",
                 }
-                info = comments.interpret(llm.ask_json(comment_system, user_msg, fallback, max_tokens=450))
+                if length == "long":
+                    fallback["comment"] = "[dry-run] a longer drafted comment would appear here, with more detail about how you would help."
+                if length == "both":
+                    fallback["comment_long"] = "[dry-run] a longer drafted comment would appear here, with more detail about how you would help."
+                info = comments.interpret(llm.ask_json(comment_system, user_msg, fallback, max_tokens=comments.token_budget(length)), length)
                 if "error" in info:
                     failed = True
                     row["comment_note"] = f"error: {info['error']}"
@@ -141,6 +146,7 @@ def run(args, profile, llm):
                     flags += info["flags"]
                     if info["relevant"] and info["comment"]:
                         row["comment"], row["comment_note"] = info["comment"], info["reason"]
+                        row["comment_long"] = info.get("comment_long", "")
                     elif info["relevant"]:
                         failed = True
                         row["comment_note"] = "error: empty comment"
