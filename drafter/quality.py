@@ -14,6 +14,15 @@ SENTENCE_END = re.compile(r"[.!?۔؟]+(\s|$)")
 NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 
+AI_TELLS = re.compile(
+    r"\b(delve|envision(?:ing|ed)?|leverag(?:e|ing)|seamless(?:ly)?|robust|elevate|tapestry|"
+    r"game[- ]changer|unlock|streamline|crucial|navigate|holistic|testament|"
+    r"i'?d be (?:more than )?happy to|feel free to|don'?t hesitate|reach out|hope this helps|"
+    r"as an ai|certainly|absolutely|great question|in today'?s)\b|[\u2013\u2014]",
+    re.I,
+)
+
+
 def comment_flags(comment, long=False):
     """Warnings for a drafted comment (empty list = clean). long=True uses the longer limits."""
     if not comment:
@@ -33,6 +42,9 @@ def comment_flags(comment, long=False):
         flags.append("placeholder left in comment")
     if SPAM.search(comment):
         flags.append("salesy words in comment")
+    tell = AI_TELLS.search(comment)
+    if tell:
+        flags.append("sounds like AI: " + tell.group(0).strip())
     return flags
 
 

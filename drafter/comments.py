@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -32,6 +33,24 @@ OUTPUT_FIELDS = [
 LENGTHS = ("short", "long", "both")  # short = 1-3 sentences, long = a fuller reply, both = one of each
 
 
+def humanize(text):
+    """Clean the little things that make a comment look machine-written."""
+    t = (text or "").strip()
+    t = re.sub(r"\s*[\u2013\u2014]\s*", ", ", t)          # no long dashes
+    t = t.replace("\u2026", "...").replace("\u2018", "'").replace("\u2019", "'")
+    t = t.replace("\u201c", '"').replace("\u201d", '"')
+    t = re.sub(r"[*_`#]+", "", t)                            # no markdown
+    t = re.sub(r"^[\-\u2022]\s+", "", t, flags=re.M)         # no bullet points
+    t = re.sub(r"\s*;\s*(\w)", lambda m: ". " + m.group(1).upper(), t)                          # no semicolons
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\s+([,.!?])", r"\1", t)
+    t = re.sub(r",\s*,", ",", t)
+    t = t.strip(' "')
+    if len(t) > 1 and t[0].islower() and t[0].isascii():
+        t = t[0].upper() + t[1:]
+    return t
+
+
 def interpret(res, length="short"):
     """Turn the model's JSON into clean fields. Returns a dict, or {"error": msg}.
 
@@ -41,8 +60,8 @@ def interpret(res, length="short"):
     if "_error" in res:
         return {"error": res["_error"]}
     relevant = bool(res.get("relevant"))
-    comment = (res.get("comment") or "").strip() if relevant else ""
-    comment_long = (res.get("comment_long") or "").strip() if relevant and length == "both" else ""
+    comment = humanize(res.get("comment")) if relevant else ""
+    comment_long = humanize(res.get("comment_long")) if relevant and length == "both" else ""
     intent = quality.clamp_intent(res.get("intent_score"))
     flags = quality.comment_flags(comment, long=(length == "long"))
     flags += ["longer version: " + f for f in quality.comment_flags(comment_long, long=True)]
@@ -105,7 +124,7 @@ def load_posts(path):
 LENGTH_RULES = {
     "short": "- 1 to 3 short sentences, ideally under 40 words.",
     "long": ("- A fuller reply: 4 to 7 sentences, roughly 70 to 130 words, in one or two short paragraphs. "
-             "Say more about how you would approach their specific situation, but stay conversational."),
+             "Say more about how you would approach their specific situation, but stay as casual and human as a short reply: no structure, no lists, no sign-off."),
     "both": ("- Write TWO versions of the same reply. \"comment\" is the SHORT one: 1 to 3 short sentences, "
              "ideally under 40 words. \"comment_long\" is the LONGER one: 4 to 7 sentences, roughly 70 to 130 words, "
              "in one or two short paragraphs, with more detail on how you would approach their specific situation. "
@@ -126,6 +145,10 @@ Rules:
 {LENGTH_RULES[length]}
 - Mention a specific detail from the post so it is clearly a reply to THIS post.
 - Match the language of the post (English, Urdu written in Roman script, or a mix). Your own tone: {tone_line(profile)}.
+- It must read like a real person typed it quickly on their phone, never like an AI or a template. Use plain everyday words and contractions (I'd, it's, you'll). Sentences can be uneven, and a short fragment is fine. Sound relaxed, not polished.
+- Never use long dashes (— or –), semicolons, bullet points, headings, bold text, or quotation marks around phrases. Use commas and full stops only.
+- Avoid AI-sounding words and phrases: delve, envision, leverage, seamless, robust, elevate, streamline, unlock, crucial, navigate, tailor, game-changer, "feel free to", "reach out", "I'd be happy to", "hope this helps", "Absolutely", "Certainly", "Great question".
+- Do not repeat the post back, do not wrap up with a neat summary line, and do not list three things in a row. Say one or two real things and stop.
 - Be helpful first: a tip, a useful question, or encouragement. Only invite a DM if the post clearly asks for someone to provide the service.
 - No links, phone numbers, hashtags, or sales slogans. At most one emoji, and only if it fits naturally.
 - Be honest. Do not claim experiences you cannot know, do not pretend to be a customer, and do not invent results or prices.
