@@ -9,6 +9,7 @@ Nudgeline drafts a natural comment for a lead's post and a personalised email fo
 ![Human in the loop](https://img.shields.io/badge/review-human%20approved-0b7a4b)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776ab)
 ![Runs locally](https://img.shields.io/badge/runs-on%20your%20computer-555)
+[![License](https://img.shields.io/badge/license-FSL--1.1--MIT-5444ec)](#license)
 
 <img src="docs/screenshots/landing.png" alt="Nudgeline landing page" width="880">
 
@@ -346,13 +347,48 @@ Nudgeline writes the first draft. You are responsible for what you send or post.
 
 ## License
 
-Nudgeline is released under the [Functional Source License, Version 1.1, MIT Future License](LICENSE) (FSL-1.1-MIT).
+<div align="center">
 
-- You can read, run, copy and modify the code for any purpose except a **Competing Use**, which means offering it to others as a commercial product or service that substitutes for Nudgeline.
-- Internal use, learning, research and non-commercial use are all fine.
-- Two years after each version is released, that version automatically becomes available under the MIT license.
+![License](https://img.shields.io/badge/license-FSL--1.1--MIT-5444ec)
+![Source available](https://img.shields.io/badge/source-available-0b7a4b)
+![Becomes MIT](https://img.shields.io/badge/becomes%20MIT-after%202%20years-3776ab)
 
-This is a source-available license, not an OSI-approved open source license.
+</div>
+
+Nudgeline is released under the **[Functional Source License, Version 1.1, MIT Future License](LICENSE)** (FSL-1.1-MIT), Copyright 2026 Hafsa Anwar.
+
+In plain words: the code is open for you to read, run and learn from, but you cannot take it and sell a competing product.
+
+### At a glance
+
+| | |
+|---|---|
+| ✅ Use it for your own outreach, inside your own business | Allowed |
+| ✅ Read, study and learn from the code | Allowed |
+| ✅ Modify it and build your own tools on top for internal use | Allowed |
+| ✅ Use it for teaching, school projects and non-commercial research | Allowed |
+| ✅ Help a client run it as a professional service | Allowed |
+| ✅ Fork it and contribute back | Allowed |
+| ❌ Offer Nudgeline, or a close copy, to others as a paid product or hosted service | Not allowed (Competing Use) |
+| ❌ Remove the copyright notice or the license text | Not allowed |
+| ❌ Use the Nudgeline name or branding as your own | Not allowed |
+
+### Becomes MIT later
+
+Every version turns into plain **MIT** on the **second anniversary** of the day it was released. The license cannot be taken back. Today's code will be fully free to use for anything in 2028.
+
+### Questions
+
+**Is this open source?**
+It is *source-available*. The code is public and you can use it freely, but the Competing Use limit means it does not meet the official open source definition until each version converts to MIT.
+
+**Can I use it at my company?**
+Yes, for your own outreach and internal work. Selling it, or a hosted version of it, to others is the one thing that is off limits.
+
+**I want to build a product with it.**
+Open an [issue](https://github.com/Hafsa-Anwar65/NudgeLine/issues) to talk about a commercial licence.
+
+The full legal text is in [`LICENSE`](LICENSE). If this summary and the license ever differ, the license is the one that counts.
 
 ## Troubleshooting
 
