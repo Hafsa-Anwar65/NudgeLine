@@ -280,3 +280,4 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .q-lbl .copy { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 700; color: var(--accent-text); background: none; border: 0; cursor: pointer; }
 #q-long-wrap { display: grid; gap: 6px; }
 .blk + .blk.long { margin-top: 12px; }
+#q-comment, #q-long, #detail textarea { overflow-y: hidden; min-height: 84px; }

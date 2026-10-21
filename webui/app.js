@@ -82,6 +82,9 @@
     $('tone-desc').textContent = TONE_DESC[state.tone] || '';
   }
 
+  // Make a text box as tall as its text, so long comments never need inner scrolling.
+  function grow(el) { if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 4, 700) + 'px'; }
+  document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('#q-comment, #q-long, #detail textarea')) grow(e.target); });
   const LENGTHS = [['short', 'Short'], ['long', 'Longer'], ['both', 'Both']];
   const LENGTH_DESC = { short: '1 to 3 sentences, quick and easy to post.', long: 'A fuller reply of 4 to 7 sentences with more detail.', both: 'Writes a short and a longer version, so you can pick the one that fits.' };
   function renderLength() {
@@ -137,9 +140,9 @@
       $('q-chips').innerHTML = `${r.priority ? `<span class="chip acc">${esc(r.priority)} priority${r.intent ? ' · ' + r.intent + '/5 interest' : ''}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}`;
       $('q-warn').hidden = !(r.flags && r.flags.length); $('q-warn').innerHTML = r.flags && r.flags.length ? `<b>Worth a look:</b> ${esc(r.flags.join(', '))}. Edit it below if you like.` : '';
       const ok = r.relevant && r.comment;
-      $('q-comment').hidden = !ok; $('q-comment').value = r.comment || '';
+      $('q-comment').hidden = !ok; $('q-comment').value = r.comment || ''; grow($('q-comment'));
       const both = ok && !!r.comment_long;
-      $('q-lbl-short').hidden = !both; $('q-long-wrap').hidden = !both; $('q-long').value = r.comment_long || '';
+      $('q-lbl-short').hidden = !both; $('q-long-wrap').hidden = !both; $('q-long').value = r.comment_long || ''; grow($('q-long'));
       $('q-copy').hidden = !ok || both; $('q-again').textContent = ok ? 'Another version' : 'Try again';
       $('q-note').hidden = ok; $('q-note').textContent = ok ? '' : 'No comment written: ' + (r.reason || 'this post does not look like a request for your service.');
     } catch (e) { $('q-hint').textContent = e.message; }
@@ -302,6 +305,7 @@
       </div>`;
 
     const val = (f) => { const x = box.querySelector(`[data-f="${f}"]`); return x ? x.value : undefined; };
+    box.querySelectorAll('textarea').forEach(grow);
     const flash = () => { const e = box.querySelector('.saved'); e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 1300); };
     $('back').addEventListener('click', () => $('view-results').classList.remove('show-detail'));
     box.querySelectorAll('[data-f]').forEach((x) => x.addEventListener('change', async () => {
