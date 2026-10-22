@@ -48,6 +48,16 @@ def comment_flags(comment, long=False):
     return flags
 
 
+COMMENT_FLAG_PREFIXES = (
+    "comment", "longer version", "sounds like AI", "link in comment", "hashtag in comment",
+    "too many emojis", "placeholder left in comment", "salesy words in comment",
+)
+
+
+def is_comment_flag(flag):
+    return str(flag).strip().startswith(COMMENT_FLAG_PREFIXES)
+
+
 def email_flags(subject, body, source_text, template_mode):
     """Warnings for a drafted email. source_text = everything the AI was allowed to use."""
     flags = []

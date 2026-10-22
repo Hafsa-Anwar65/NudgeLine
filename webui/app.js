@@ -25,6 +25,7 @@
   function demoApi(path, opts) {
     if (path.startsWith('/api/results')) return { run: 'demo', rows: state.rows, meta: state.meta };
     if (path.startsWith('/api/export')) throw new Error('Create a free account to export your approved drafts.');
+    if (path.startsWith('/api/regenerate')) throw new Error('Create a free account to rewrite comments with AI.');
     const d = JSON.parse(opts.body || '{}');
     if (path.startsWith('/api/bulk')) { let n = 0; state.rows.forEach((r) => { if (r.status === 'draft') { r.status = 'approved'; n++; } }); return { approved: n }; }
     const row = state.rows.find((r) => r.id === d.id); if (!row) throw new Error('Lead not found');
@@ -85,6 +86,7 @@
   // Make a text box as tall as its text, so long comments never need inner scrolling.
   function grow(el) { if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 4, 700) + 'px'; }
   document.addEventListener('input', (e) => { if (e.target.matches && e.target.matches('#q-comment, #q-long, #detail textarea')) grow(e.target); });
+  state.rw = {};
   const LENGTHS = [['short', 'Short'], ['long', 'Longer'], ['both', 'Both']];
   const LENGTH_DESC = { short: '1 to 3 sentences, quick and easy to post.', long: 'A fuller reply of 4 to 7 sentences with more detail.', both: 'Writes a short and a longer version, so you can pick the one that fits.' };
   function renderLength() {
@@ -222,7 +224,7 @@
 
   async function openRun(run) {
     const d = await api('/api/results?run=' + encodeURIComponent(run));
-    state.run = run; state.rows = d.rows; state.meta = d.meta || {}; state.sel = null;
+    state.run = run; state.rows = d.rows; state.meta = d.meta || {}; state.sel = null; state.rw = {};
     $('view-results').classList.remove('show-detail');
     const first = state.rows.find((r) => r.status === 'needs_edit') || state.rows.find((r) => r.status === 'draft') || state.rows[0];
     state.sel = first ? first.id : null;
@@ -280,6 +282,14 @@
     (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast(label + ' copied'), () => toast('Select the text and press Ctrl+C'));
   }
 
+  function rewriteBar(r) {
+    const o = state.rw[r.id] || (state.rw[r.id] = { length: r.comment_long ? 'both' : (state.meta.length || state.length || 'short'), tone: state.meta.tone || state.tone });
+    return `<div class="rw" id="rw"><span class="rw-t">Rewrite this comment</span>
+      <div class="seg seg-sm" id="rw-len" role="radiogroup" aria-label="Length">${LENGTHS.map(([v, l]) => `<button type="button" role="radio" data-v="${v}" aria-checked="${v === o.length}">${l}</button>`).join('')}</div>
+      <select id="rw-tone" aria-label="Tone">${state.tones.map((t) => `<option value="${esc(t)}"${t === o.tone ? ' selected' : ''}>${esc(t[0].toUpperCase() + t.slice(1))}</option>`).join('')}</select>
+      <button class="btn btn-primary btn-sm" id="rw-go" type="button">Rewrite</button></div>`;
+  }
+
   function renderDetail() {
     const box = $('detail'), r = state.rows.find((x) => x.id === state.sel);
     if (!r) { box.innerHTML = '<div class="empty-d"><h3>Pick a lead</h3><p>Choose one from the list to read and edit its drafts.</p></div>'; return; }
@@ -292,6 +302,7 @@
       <div class="chips">${r.priority ? `<span class="chip acc">${esc(r.priority)} priority${intent ? ' · ' + intent : ''}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}</div>
       ${r.qa_flags ? `<div class="warnbox"><b>Worth a look:</b> ${esc(r.qa_flags)}. Edit the text below, then approve.</div>` : ''}
       ${r.post_text ? `<p class="post"><b>Their post:</b> ${esc(r.post_text)}</p>` : ''}
+      ${r.post_text ? rewriteBar(r) : ''}
       ${r.comment ? `<div class="blk"><div class="blk-h">${r.comment_long ? 'Short comment' : 'Comment to post'}<button class="copy" data-copy="comment" type="button">Copy</button></div><textarea data-f="comment" rows="3">${esc(r.comment)}</textarea></div>`
         : `<p class="note">No comment: ${esc((r.comment_note || '').replace(/^skipped:\s*/, '') || 'nothing to reply to')}</p>`}
       ${r.comment && r.comment_long ? `<div class="blk long"><div class="blk-h">Longer comment<button class="copy" data-copy="comment_long" type="button">Copy</button></div><textarea data-f="comment_long" rows="7">${esc(r.comment_long)}</textarea></div>` : ''}
@@ -306,6 +317,16 @@
 
     const val = (f) => { const x = box.querySelector(`[data-f="${f}"]`); return x ? x.value : undefined; };
     box.querySelectorAll('textarea').forEach(grow);
+    if ($('rw')) {
+      const o = state.rw[r.id];
+      $('rw-len').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { o.length = b.dataset.v; $('rw-len').querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); }));
+      $('rw-tone').addEventListener('change', (e) => { o.tone = e.target.value; });
+      $('rw-go').addEventListener('click', async () => {
+        const btn = $('rw-go'); btn.disabled = true; btn.textContent = 'Writing…';
+        try { Object.assign(r, await post('/api/regenerate', { run: state.run, id: r.id, length: o.length, tone: o.tone })); toast('Comment rewritten'); renderAll(); }
+        catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Rewrite'; }
+      });
+    }
     const flash = () => { const e = box.querySelector('.saved'); e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 1300); };
     $('back').addEventListener('click', () => $('view-results').classList.remove('show-detail'));
     box.querySelectorAll('[data-f]').forEach((x) => x.addEventListener('change', async () => {

@@ -112,7 +112,7 @@ def run(args, profile, llm):
                 "id": rec["id"], "priority": "", "intent_score": "", "language": "",
                 "name": rec["name"], "company": rec["company"],
                 "email": rec["email"], "post_url": rec["post_url"],
-                "post_text": rec["notes"][:500].replace("\n", " "),
+                "post_text": rec["notes"][:1500].replace("\n", " "),
                 "comment": "", "comment_long": "", "comment_note": "", "subject": "", "body": "",
                 "personalization": "", "angle": "", "qa_flags": "", "status": "",
             }

@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 import accounts
 import demo
 from http.cookies import SimpleCookie
-from drafter import both, comments, emails, review
+from drafter import both, comments, emails, quality, review
 from drafter import router
 from drafter.common import ROOT, TONES, _find_keys, load_env
 from drafter.router import Router as LLM
@@ -247,6 +247,55 @@ def update_row(uid, run_id, row_id, payload):
             row["status"] = "rejected"
         elif decision == "reset":
             row["status"] = "needs_edit" if row.get("qa_flags") else "draft"
+        review.write_rows(p, fields, rows)
+        return row
+
+
+def rewrite_comment(uid, user, run_id, row_id, length, tone):
+    """Write this one lead's comment again with a different length and/or tone."""
+    p = run_path(uid, run_id)
+    fields, rows = review.read_rows(p)
+    row = next((r for r in rows if r.get("id") == row_id), None)
+    if not row:
+        raise FileNotFoundError("row not found")
+    post_text = (row.get("post_text") or "").strip()
+    if not post_text:
+        raise ValueError("This lead has no post to reply to.")
+    cfg = defaults(uid, user)
+    if not cfg.get("service") or not cfg.get("about"):
+        raise ValueError("Your service and about line are missing. Start a new run once to save them.")
+    dry = bool(read_meta(uid, run_id).get("dry_run"))
+    if not dry:
+        load_env()
+        if not _find_keys():
+            raise ValueError("AI is not set up yet. Ask the admin to add an API key.")
+    profile = {"name": cfg.get("name") or user["name"], "service": cfg["service"], "about": cfg["about"],
+               "tone": tone, "comment_length": length}
+    user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
+                f"Post author: {row.get('name') or 'unknown'}\nPost text:\n{post_text[:2000]}")
+    fallback = {"relevant": True, "intent_score": 3, "language": "English", "reason": "test run, no AI used",
+                "comment": "Test run: a rewritten comment would appear here.",
+                "comment_long": "Test run: a longer rewritten comment would appear here, with more detail."}
+    res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile, length), user_msg, fallback,
+                                    max_tokens=comments.token_budget(length))
+    info = comments.interpret(res, length)
+    if "error" in info:
+        raise ValueError(info["error"])
+    if not info["comment"]:
+        raise ValueError("The AI did not write a comment for this post: " + (info["reason"] or "it does not look like a request for your service."))
+    with FILE_LOCK:
+        fields, rows = review.read_rows(p)
+        row = next((r for r in rows if r.get("id") == row_id), None)
+        if not row:
+            raise FileNotFoundError("row not found")
+        if "comment_long" not in fields:
+            fields = fields + ["comment_long"]
+        row["comment"], row["comment_long"] = info["comment"], info["comment_long"]
+        row["comment_note"] = info["reason"]
+        keep = [f for f in (row.get("qa_flags") or "").split("; ") if f.strip() and not quality.is_comment_flag(f)]
+        row["qa_flags"] = "; ".join(keep + info["flags"])
+        if row.get("status") in ("draft", "needs_edit", "approved", "rejected"):
+            row["status"] = "needs_edit" if row["qa_flags"] else "draft"
         review.write_rows(p, fields, rows)
         return row
 
@@ -505,6 +554,11 @@ class Handler(BaseHTTPRequestHandler):
                 if d.get("action") != "approve_ready":
                     raise ValueError("Unknown action")
                 return self.send(200, {"approved": approve_ready(uid, d.get("run", ""))})
+            if url.path == "/api/regenerate":
+                d = self.json_body()
+                length = d.get("length") if d.get("length") in comments.LENGTHS else "short"
+                tone = d.get("tone") if d.get("tone") in TONES else "friendly"
+                return self.send(200, rewrite_comment(uid, u, d.get("run", ""), d.get("id", ""), length, tone))
             if url.path == "/api/update":
                 d = self.json_body()
                 return self.send(200, update_row(uid, d.get("run", ""), d.get("id", ""), d))
