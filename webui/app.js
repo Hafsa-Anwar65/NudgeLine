@@ -142,10 +142,6 @@
   async function quickComment() {
     const post = $('q-post').value.trim();
     if (post.length < 5) { $('q-hint').textContent = 'Paste the post text first.'; return; }
-    if (!$('f-service').value.trim() || !$('f-about').value.trim()) {
-      $('q-hint').textContent = 'Fill in your service and one line about you first.';
-      $('card-custom').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('f-service').focus(); return;
-    }
     $('q-go').disabled = true; $('q-again').disabled = true; $('q-go').textContent = 'Writing…'; $('q-hint').textContent = '';
     try {
       const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, length: state.length, dry_run: $('f-dry').checked });

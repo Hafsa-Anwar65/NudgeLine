@@ -137,7 +137,8 @@ def build_system_prompt(profile, length="short"):
     name, service, about = profile["name"], profile["service"], profile["about"]
     one = "TWO versions of the comment" if length == "both" else "ONE comment"
     json_comment = '"comment": "the short comment text or empty string", "comment_long": "the longer comment or empty string"' if length == "both" else '"comment": "the comment text or empty string"'
-    return f"""You help {name} write replies to Facebook posts. {name} offers: {service}. {about}
+    offer = f" {name} offers: {service}. {about}".rstrip() if (service or about) else ""
+    return f"""You help {name} write replies to Facebook posts.{offer}
 
 Write {one} per post that sounds like a real, helpful person, not a marketer.
 
@@ -153,10 +154,12 @@ Rules:
 - No links, phone numbers, hashtags, or sales slogans. At most one emoji, and only if it fits naturally.
 - Be honest. Do not claim experiences you cannot know, do not pretend to be a customer, and do not invent results or prices.
 - Do not start with "Great post!" or similar generic openers.
-- If the post is not a genuine need or not related to {service}, mark it not relevant and write no comment.
+- Write a comment for ANY post, whatever the topic. Do not limit yourself to {service or "one subject"}. If the post has nothing to do with what {name} offers, just be a genuinely helpful, friendly reply (advice, a useful question, encouragement or congratulations) and do not pitch anything.
+- Only mention what {name} offers when the post is clearly asking for it. Never force a sales pitch.
+- Mark a post not relevant only if it is empty, nonsense, spam, or abusive. Otherwise always write a comment.
 
 Reply with ONLY a JSON object, nothing else:
-{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = barely related), "language": "English|Urdu|Roman Urdu|Mixed|Other", {json_comment}, "reason": "one short line on why"}}"""
+{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = the post is unrelated to what {name} offers), "language": "English|Urdu|Roman Urdu|Mixed|Other", {json_comment}, "reason": "one short line on why"}}"""
 
 
 def token_budget(length):

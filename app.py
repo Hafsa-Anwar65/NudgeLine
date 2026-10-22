@@ -262,14 +262,12 @@ def rewrite_comment(uid, user, run_id, row_id, length, tone):
     if not post_text:
         raise ValueError("This lead has no post to reply to.")
     cfg = defaults(uid, user)
-    if not cfg.get("service") or not cfg.get("about"):
-        raise ValueError("Your service and about line are missing. Start a new run once to save them.")
     dry = bool(read_meta(uid, run_id).get("dry_run"))
     if not dry:
         load_env()
         if not _find_keys():
             raise ValueError("AI is not set up yet. Ask the admin to add an API key.")
-    profile = {"name": cfg.get("name") or user["name"], "service": cfg["service"], "about": cfg["about"],
+    profile = {"name": cfg.get("name") or user["name"], "service": cfg.get("service", ""), "about": cfg.get("about", ""),
                "tone": tone, "comment_length": length}
     user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
                 f"Post author: {row.get('name') or 'unknown'}\nPost text:\n{post_text[:2000]}")
@@ -489,9 +487,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Paste the post text first.")
                 name = str(d.get("name", "")).strip()[:60] or u["name"]
                 service = str(d.get("service", "")).strip()[:200]
-                about = str(d.get("about", "")).strip()[:400]
-                if not service or not about:
-                    raise ValueError("Fill in 'Service you offer' and 'About you' first (step 2 below).")
+                about = str(d.get("about", "")).strip()[:400]  # both optional: any post gets a comment
                 tone = d.get("tone") if d.get("tone") in TONES else "friendly"
                 length = d.get("length") if d.get("length") in comments.LENGTHS else "short"
                 dry = bool(d.get("dry_run"))
