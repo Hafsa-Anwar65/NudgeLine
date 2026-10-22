@@ -498,3 +498,17 @@ textarea.big { min-height: 150px; }
 .leg i { width: 10px; height: 10px; margin-right: 5px; }
 .acc-t { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
 .acc-t th, .acc-t td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--edge); }
+
+.runpick { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.runpick select { min-width: 180px; max-width: 240px; }
+
+.ex-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.chip { border: 1px solid var(--edge); background: var(--bg); color: var(--text); padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chip i { font-style: normal; color: var(--muted); margin-left: 4px; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; } .chip.on i { color: #fff; }
+.ex-act { display: inline-flex; align-items: center; gap: 12px; }
+.ex-sel { font-size: 12.5px; padding: 4px 6px; min-height: 0; width: auto; }
+.ex-add-box { border: 1px solid var(--edge); padding: 12px 14px; margin: 14px 0; }
+.ex-add-box summary { cursor: pointer; font-weight: 700; color: var(--accent-text); }
+.ex-add-box .f { margin-top: 12px; display: grid; gap: 6px; }
+.ex-add-box .opt { display: inline; font-style: normal; font-weight: 400; color: var(--muted); }

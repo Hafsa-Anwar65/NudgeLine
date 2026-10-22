@@ -85,16 +85,53 @@ EX_LOCK = threading.Lock()
 EX_MAX = 300
 
 
+CATEGORIES = [
+    ("website", "Website development", r"websit|web ?site|web ?dev|web ?design|landing page|wordpress|shopify|woocommerce|wix|html|frontend|front-end|ecommerce|e-commerce|online store|seo|domain|hosting"),
+    ("app", "App development", r"\bapps?\b|android|ios|iphone|mobile app|flutter|react native|software|saas|dashboard|chatbot|automation|\bapi\b|backend|developer"),
+    ("logo", "Logo and branding", r"logo|brand|branding|identity|mascot|packaging|label design|business card|letterhead|illustrat"),
+    ("marketing", "Marketing materials", r"marketing|poster|flyer|banner|brochure|catalog|catalogue|ads?\b|advert|campaign|leaflet|newsletter|promo|social media|content|copywrit|instagram|facebook page|menu"),
+    ("video", "Video and animation", r"video|animation|animat|reel|edit(or|ing)|motion|youtube|tiktok|voice ?over"),
+]
+CAT_NAMES = {k: n for k, n, _ in CATEGORIES}
+CAT_NAMES["other"] = "Other"
+
+
+def guess_category(*texts):
+    text = " ".join(str(t or "") for t in texts).lower()
+    best, hits = "other", 0
+    for key, _, pat in CATEGORIES:
+        n = len(re.findall(pat, text))
+        if n > hits:
+            best, hits = key, n
+    return best
+
+
 def load_examples(uid):
     p = udir(uid) / "examples.json"
     try:
         data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
-        return [e for e in data if isinstance(e, dict) and e.get("comment")]
+        data = [e for e in data if isinstance(e, dict) and e.get("comment")]
+        for e in data:
+            if e.get("category") not in CAT_NAMES:
+                e["category"] = guess_category(e.get("post"), e.get("comment"))
+        return data
     except Exception:
         return []
 
 
-def add_examples(uid, items, source):
+def set_example_category(uid, ex_id, cat):
+    if cat not in CAT_NAMES:
+        raise ValueError("Unknown category")
+    with EX_LOCK:
+        data = load_examples(uid)
+        for e in data:
+            if e.get("id") == ex_id:
+                e["category"] = cat
+        (udir(uid) / "examples.json").write_text(json.dumps(data), encoding="utf-8")
+        return len(data)
+
+
+def add_examples(uid, items, source, category=None):
     """items: list of (comment, post). Skips empty and duplicate comments."""
     with EX_LOCK:
         data = load_examples(uid)
@@ -107,7 +144,8 @@ def add_examples(uid, items, source):
                 continue
             have.add(key)
             data.append({"id": "e" + uuid.uuid4().hex[:10], "comment": comment, "post": str(post or "").strip()[:400],
-                         "source": source, "created": datetime.now().isoformat(timespec="seconds")})
+                         "source": source, "category": category if category in CAT_NAMES else guess_category(post, comment),
+                         "created": datetime.now().isoformat(timespec="seconds")})
             added += 1
         data = data[-EX_MAX:]
         (udir(uid) / "examples.json").write_text(json.dumps(data), encoding="utf-8")
@@ -206,6 +244,7 @@ def accuracy(uid):
             "closeness": round(100 * tot["sim"] / tot["approved"]) if tot["approved"] else None,
             "samples": len(ex), "samples_max": EX_MAX,
             "by_source": {s: sum(1 for e in ex if e.get("source") == s) for s in ("quick", "review", "manual", "import")},
+            "by_category": {n: sum(1 for e in ex if e.get("category") == k) for k, n in CAT_NAMES.items()},
             "runs": list(reversed(runs[:8]))}
 
 
@@ -547,7 +586,7 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": f"{type(e).__name__}: {e}"})
             if url.path == "/api/examples":
-                return self.send(200, {"examples": list(reversed(load_examples(uid)))})
+                return self.send(200, {"examples": list(reversed(load_examples(uid))), "categories": CAT_NAMES})
             if url.path == "/api/accuracy":
                 return self.send(200, accuracy(uid))
             if url.path == "/api/results":
@@ -703,6 +742,9 @@ class Handler(BaseHTTPRequestHandler):
                                        "examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/examples":
                 d = self.json_body()
+                if d.get("action") == "category":
+                    set_example_category(uid, str(d.get("id", "")), str(d.get("category", "")))
+                    return self.send(200, {"examples": list(reversed(load_examples(uid)))})
                 if d.get("action") == "delete":
                     n = delete_example(uid, str(d.get("id", "")))
                     return self.send(200, {"count": n, "examples": list(reversed(load_examples(uid)))})
@@ -711,7 +753,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not any(len(c.strip()) >= 8 for c, _ in pairs):
                     raise ValueError("Write or paste a comment first (at least a few words).")
                 src = d.get("source") if d.get("source") in ("quick", "review", "manual") else "manual"
-                added, total = add_examples(uid, pairs, src)
+                added, total = add_examples(uid, pairs, src, d.get("category"))
                 return self.send(200, {"added": added, "count": total, "examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/regenerate":
                 d = self.json_body()

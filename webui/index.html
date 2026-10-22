@@ -20,12 +20,13 @@
       <span id="key-pill" class="pill" title="Whether an AI key was found in your .env file" hidden>checking…</span>
       <span id="demo-pill" class="pill acc" hidden>Demo mode</span>
       <button id="plan-btn" class="pill plan-pill" type="button" title="See plans" hidden></button>
+      <button id="voice-btn" class="btn btn-ghost btn-sm" type="button" title="Import samples and see accuracy" hidden>Settings</button>
       <div id="acct" class="acct" hidden>
         <button id="acct-btn" class="avatar" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Account menu"></button><i id="av-dot" class="av-dot" hidden></i>
         <div id="acct-menu" class="menu" hidden>
           <div class="menu-who"><b id="m-name"></b><small id="m-email"></small></div>
           <button type="button" id="m-plans">Plans and subscription</button>
-          <button type="button" id="m-voice">Voice and accuracy</button>
+          <button type="button" id="m-voice">Settings: voice and accuracy</button>
           <button type="button" id="m-admin" hidden>Admin dashboard <span id="m-badge" class="nbadge" hidden></span></button>
           <button type="button" id="m-out">Sign out</button>
         </div>
@@ -230,7 +231,7 @@
         <p id="sum-sub" class="hint"></p>
       </div>
       <div class="sum-actions">
-        <select id="run-select" aria-label="Choose a run"></select>
+        <label class="runpick"><span>Run</span><select id="run-select" aria-label="Choose a run"></select></label>
         <button id="new-run" class="btn btn-ghost btn-sm" type="button">+ New run</button>
       </div>
     </div>

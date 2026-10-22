@@ -167,23 +167,36 @@
       : `Approve comments you like and the AI will learn your style. You can also <button class="link" type="button" id="ex-open">paste ones you wrote yourself</button>.`;
     $('ex-open').addEventListener('click', openEx);
   }
+  const CATS = { website: 'Website development', app: 'App development', logo: 'Logo and branding', marketing: 'Marketing materials', video: 'Video and animation', other: 'Other' };
+  state.exCat = 'all';
   function renderExList() {
-    const box = $('ex-list');
-    box.innerHTML = state.ex.length ? state.ex.map((e) => `<div class="ex-item"><p>${esc(e.comment)}</p>
+    const box = $('ex-list'), cnt = {};
+    state.ex.forEach((e) => { cnt[e.category] = (cnt[e.category] || 0) + 1; });
+    const chip = (k, l, n) => `<button type="button" class="chip${state.exCat === k ? ' on' : ''}" data-cat="${k}">${l} <i>${n}</i></button>`;
+    $('ex-filter').innerHTML = state.ex.length ? chip('all', 'All', state.ex.length) + Object.keys(CATS).filter((k) => cnt[k]).map((k) => chip(k, CATS[k], cnt[k])).join('') : '';
+    $('ex-filter').querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { state.exCat = b.dataset.cat; renderExList(); }));
+    if (state.exCat !== 'all' && !cnt[state.exCat]) state.exCat = 'all';
+    const list = state.ex.filter((e) => state.exCat === 'all' || e.category === state.exCat);
+    box.innerHTML = list.length ? list.map((e) => `<div class="ex-item"><p>${esc(e.comment)}</p>
       ${e.post ? `<small class="ex-post">Reply to: ${esc(e.post.slice(0, 120))}</small>` : ''}
-      <div class="ex-meta"><small>${esc({ quick: 'Quick comment', review: 'Approved in review', manual: 'Added by you' }[e.source] || 'Saved')}</small>
-      <button class="link" type="button" data-del="${esc(e.id)}">Delete</button></div></div>`).join('') : '<p class="note">Nothing saved yet.</p>';
+      <div class="ex-meta"><small>${esc({ quick: 'Quick comment', review: 'Approved in review', manual: 'Added by you', import: 'Imported' }[e.source] || 'Saved')}</small>
+      <span class="ex-act"><select class="ex-sel" data-id="${esc(e.id)}" aria-label="Category">${Object.keys(CATS).map((k) => `<option value="${k}"${k === e.category ? ' selected' : ''}>${CATS[k]}</option>`).join('')}</select>
+      <button class="link" type="button" data-del="${esc(e.id)}">Delete</button></span></div></div>`).join('') : '<p class="note">Nothing saved yet.</p>';
     box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
       try { const r = await post('/api/examples', { action: 'delete', id: b.dataset.del }); state.ex = r.examples; renderExList(); renderExLine(); } catch (e) { toast(e.message); }
     }));
+    box.querySelectorAll('.ex-sel').forEach((s) => s.addEventListener('change', async () => {
+      try { const r = await post('/api/examples', { action: 'category', id: s.dataset.id, category: s.value }); state.ex = r.examples; renderExList(); toast('Moved to ' + CATS[s.value]); } catch (e) { toast(e.message); }
+    }));
   }
   async function loadExamples() { try { state.ex = (await api('/api/examples')).examples || []; } catch (e) { state.ex = []; } renderExLine(); }
+  $('ex-cat').innerHTML = '<option value="">Auto detect</option>' + Object.keys(CATS).map((k) => `<option value="${k}">${CATS[k]}</option>`).join('');
   const openEx = () => { renderExList(); $('ex-drawer').hidden = false; document.body.classList.add('no-scroll'); };
   const closeEx = () => { $('ex-drawer').hidden = true; document.body.classList.remove('no-scroll'); };
   $('ex-close').addEventListener('click', closeEx); $('ex-bg').addEventListener('click', closeEx);
   $('ex-add').addEventListener('click', async () => {
     try {
-      const r = await post('/api/examples', { comment: $('ex-comment').value, post: $('ex-post').value, source: 'manual' });
+      const r = await post('/api/examples', { comment: $('ex-comment').value, post: $('ex-post').value, category: $('ex-cat').value || undefined, source: 'manual' });
       state.ex = r.examples; $('ex-comment').value = ''; $('ex-post').value = ''; renderExList(); renderExLine(); toast(r.added ? 'Saved' : 'That comment was already saved');
     } catch (e) { toast(e.message); }
   });
@@ -238,7 +251,7 @@
     ev.target.value = '';
   });
   $('vs-manage').addEventListener('click', openEx);
-  $('m-voice').addEventListener('click', showVoice);
+  $('m-voice').addEventListener('click', showVoice); $('voice-btn').addEventListener('click', showVoice);
   $('voice-back').addEventListener('click', () => showView(state.prevView === 'results' && state.rows.length ? 'results' : 'setup'));
   const post_ = post;
   $('q-go').addEventListener('click', quickComment); $('q-again').addEventListener('click', quickComment);
@@ -294,11 +307,24 @@
   async function loadRuns(select, openResults) {
     await refreshStatus();
     const sel = $('run-select'); sel.innerHTML = '';
-    state.runs.forEach((r) => { const o = document.createElement('option'); o.value = r; o.textContent = fmtRun(r); sel.appendChild(o); });
+    const groups = {};
+    state.runs.forEach((r) => { const d = dayLabel(r); (groups[d] = groups[d] || []).push(r); });
+    Object.keys(groups).forEach((d) => {
+      const g = document.createElement('optgroup'); g.label = d;
+      groups[d].forEach((r) => { const o = document.createElement('option'); o.value = r; o.textContent = timeLabel(r) + (r === state.runs[0] ? '  (latest)' : ''); g.appendChild(o); });
+      sel.appendChild(g);
+    });
     if (select) sel.value = select;
     await renderRecent();
     if (select && openResults) { await openRun(sel.value); }
   }
+  const runDate = (r) => { const m = r.match(/run_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null; };
+  function dayLabel(r) {
+    const d = runDate(r); if (!d) return 'Other';
+    const t = new Date(); t.setHours(0, 0, 0, 0); const diff = Math.round((t - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+    return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  const timeLabel = (r) => { const d = runDate(r); return d ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : r; };
   const fmtRun = (r) => { const m = r.match(/run_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : r; };
   async function renderRecent() {
     const box = $('recent-list'); box.innerHTML = '';
@@ -512,7 +538,7 @@
       $('acct-btn').textContent = initials(u.name); $('m-name').textContent = u.name; $('m-email').textContent = u.email;
       $('plan-btn').textContent = u.plan_name + ' plan';
     }
-    $('m-admin').hidden = !(u && u.admin);
+    $('m-admin').hidden = !(u && u.admin); $('voice-btn').hidden = !u;
     $('acct-menu').hidden = true; $('acct-btn').setAttribute('aria-expanded', 'false');
   }
   $('acct-btn').addEventListener('click', (e) => { e.stopPropagation(); const m = $('acct-menu'); m.hidden = !m.hidden; $('acct-btn').setAttribute('aria-expanded', String(!m.hidden)); });
