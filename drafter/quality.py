@@ -16,7 +16,7 @@ NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 AI_TELLS = re.compile(
     r"\b(delve|envision(?:ing|ed)?|leverag(?:e|ing)|seamless(?:ly)?|robust|elevate|tapestry|"
-    r"game[- ]changer|unlock|streamline|crucial|navigate|holistic|testament|"
+    r"game[- ]changer|streamline|crucial|holistic|testament|"
     r"i'?d be (?:more than )?happy to|feel free to|don'?t hesitate|reach out|hope this helps|"
     r"as an ai|certainly|absolutely|great question|in today'?s)\b|[\u2013\u2014]",
     re.I,
