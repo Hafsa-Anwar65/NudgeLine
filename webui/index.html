@@ -112,7 +112,18 @@
         <div id="acc-board"></div>
       </section>
     </div>
-    <section class="card"><h2 class="sec-h">Your saved samples <button id="vs-manage" class="link" type="button">Manage</button></h2><div id="vs-sources" class="hint"></div></section>
+    <section class="card" id="vs-saved">
+      <h2 class="sec-h">Saved comments <span class="sec-note" id="vs-count"></span></h2>
+      <p class="hint">The AI reads a few of these before it writes, so new comments sound like you and not like a bot. <span id="vs-sources"></span></p>
+      <div class="ex-tools"><div id="ex-filter" class="ex-filter"></div><input id="ex-search" type="search" placeholder="Search saved comments"></div>
+      <div id="ex-list" class="ex-list"></div>
+      <details class="ex-add-box"><summary>+ Add a comment you posted</summary>
+      <label class="f"><span>A comment you posted</span><textarea id="ex-comment" rows="3" maxlength="900" placeholder="Paste a comment you wrote or posted before"></textarea></label>
+      <label class="f"><span>The post it replied to <em class="opt">(optional)</em></span><textarea id="ex-post" rows="2" maxlength="400" placeholder="Helps the AI see what kind of post it was"></textarea></label>
+      <label class="f"><span>Category</span><select id="ex-cat"></select></label>
+      <button id="ex-add" class="btn btn-primary" type="button">Save comment</button>
+    </details>
+    </section>
   </section>
   <section id="view-plans" class="view plans-view" hidden>
     <div class="sum-head"><div><h1>Plans and subscription</h1><p class="hint">Pick the plan that fits your lists. You can change it any time.</p></div>
@@ -264,22 +275,7 @@
     <button id="export" class="btn btn-primary btn-sm" type="button" disabled>Export approved (CSV)</button>
   </div>
 </footer>
-<div id="ex-drawer" class="drawer" hidden>
-  <div class="drawer-bg" id="ex-bg"></div>
-  <aside class="drawer-panel" role="dialog" aria-label="Your saved comments">
-    <div class="drawer-h"><h2>Your saved comments</h2><button id="ex-close" class="btn btn-ghost btn-sm" type="button">Close</button></div>
-    <p class="hint">The AI reads a few of these before it writes, so new comments sound like you and not like a bot. Approved comments are saved here. You can also paste ones you really posted.</p>
-    <div id="ex-filter" class="ex-filter"></div>
-    <div id="ex-list" class="ex-list"></div>
-    <details class="ex-add-box"><summary>+ Add a comment you posted</summary>
-      <label class="f"><span>A comment you posted</span><textarea id="ex-comment" rows="3" maxlength="900" placeholder="Paste a comment you wrote or posted before"></textarea></label>
-      <label class="f"><span>The post it replied to <em class="opt">(optional)</em></span><textarea id="ex-post" rows="2" maxlength="400" placeholder="Helps the AI see what kind of post it was"></textarea></label>
-      <label class="f"><span>Category</span><select id="ex-cat"></select></label>
-      <button id="ex-add" class="btn btn-primary" type="button">Save comment</button>
-    </details>
 
-  </aside>
-</div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="/app.js"></script>
 </body>

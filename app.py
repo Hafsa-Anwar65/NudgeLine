@@ -86,11 +86,17 @@ EX_MAX = 300
 
 
 CATEGORIES = [
-    ("website", "Website development", r"websit|web ?site|web ?dev|web ?design|landing page|wordpress|shopify|woocommerce|wix|html|frontend|front-end|ecommerce|e-commerce|online store|seo|domain|hosting"),
-    ("app", "App development", r"\bapps?\b|android|ios|iphone|mobile app|flutter|react native|software|saas|dashboard|chatbot|automation|\bapi\b|backend|developer"),
-    ("logo", "Logo and branding", r"logo|brand|branding|identity|mascot|packaging|label design|business card|letterhead|illustrat"),
-    ("marketing", "Marketing materials", r"marketing|poster|flyer|banner|brochure|catalog|catalogue|ads?\b|advert|campaign|leaflet|newsletter|promo|social media|content|copywrit|instagram|facebook page|menu"),
-    ("video", "Video and animation", r"video|animation|animat|reel|edit(or|ing)|motion|youtube|tiktok|voice ?over"),
+    ("website", "Website Development", r"websit|web ?dev|web ?design|landing page|wordpress|shopify|woocommerce|wix|frontend|front-end|e-?commerce|online store|hosting|web ?app"),
+    ("app", "App Development", r"\bapps?\b|android|\bios\b|iphone|flutter|react native|mobile app|software|saas|chatbot|\bapi\b"),
+    ("book_cover", "Book Cover Design", r"book cover|cover design|ebook cover|kindle cover|paperback cover|cover for (my|our|the) book"),
+    ("book_edit", "Book Editing", r"book edit|proofread|manuscript|copy ?edit|ghost ?writ|editing (my|our|the) book|editor for (my|our|the) book"),
+    ("book_pub", "Book Publishing", r"publish|\bkdp\b|self-?publish|\bisbn\b|my book|our book|e-?book|author"),
+    ("graphic", "Graphic Design", r"graphic|poster|flyer|banner|brochure|illustrat|infographic|packaging|business card|thumbnail|catalog"),
+    ("logo", "Logo Design", r"logo|brand identity|branding|mascot|brand kit|brand design"),
+    ("marketing", "Marketing", r"marketing|campaign|\bads?\b|advert|lead ?gen|newsletter|promo|growth"),
+    ("seo", "SEO", r"\bseo\b|keyword|ranking|backlink|google rank|search engine|organic traffic"),
+    ("social", "Social Media Marketing / Management", r"social media|instagram|facebook page|tiktok|content calendar|community manag|posting|post daily"),
+    ("video", "Video Editing", r"video|animation|\breels?\b|motion|youtube|voice ?over|edit(or|ing) (my|our|the)? ?(video|footage)"),
 ]
 CAT_NAMES = {k: n for k, n, _ in CATEGORIES}
 CAT_NAMES["other"] = "Other"

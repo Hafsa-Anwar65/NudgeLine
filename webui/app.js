@@ -172,7 +172,7 @@
       : `Approve comments you like and the AI will learn your style. You can also <button class="link" type="button" id="ex-open">paste ones you wrote yourself</button>.`;
     $('ex-open').addEventListener('click', openEx);
   }
-  const CATS = { website: 'Website development', app: 'App development', logo: 'Logo and branding', marketing: 'Marketing materials', video: 'Video and animation', other: 'Other' };
+  const CATS = { website: 'Website Development', app: 'App Development', book_cover: 'Book Cover Design', book_edit: 'Book Editing', book_pub: 'Book Publishing', graphic: 'Graphic Design', logo: 'Logo Design', marketing: 'Marketing', seo: 'SEO', social: 'Social Media Marketing / Management', video: 'Video Editing', other: 'Other' };
   state.exCat = 'all';
   function renderExList() {
     const box = $('ex-list'), cnt = {};
@@ -181,12 +181,16 @@
     $('ex-filter').innerHTML = state.ex.length ? chip('all', 'All', state.ex.length) + Object.keys(CATS).filter((k) => cnt[k]).map((k) => chip(k, CATS[k], cnt[k])).join('') : '';
     $('ex-filter').querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { state.exCat = b.dataset.cat; renderExList(); }));
     if (state.exCat !== 'all' && !cnt[state.exCat]) state.exCat = 'all';
-    const list = state.ex.filter((e) => state.exCat === 'all' || e.category === state.exCat);
-    box.innerHTML = list.length ? list.map((e) => `<div class="ex-item"><p>${esc(e.comment)}</p>
-      ${e.post ? `<small class="ex-post">Reply to: ${esc(e.post.slice(0, 120))}</small>` : ''}
-      <div class="ex-meta"><small>${esc({ quick: 'Quick comment', review: 'Approved in review', manual: 'Added by you', import: 'Imported' }[e.source] || 'Saved')}</small>
-      <span class="ex-act"><select class="ex-sel" data-id="${esc(e.id)}" aria-label="Category">${Object.keys(CATS).map((k) => `<option value="${k}"${k === e.category ? ' selected' : ''}>${CATS[k]}</option>`).join('')}</select>
-      <button class="link" type="button" data-del="${esc(e.id)}">Delete</button></span></div></div>`).join('') : '<p class="note">Nothing saved yet.</p>';
+    const list = state.ex.filter((e) => (state.exCat === 'all' || e.category === state.exCat) && (!state.exQ || (e.comment + ' ' + (e.post || '')).toLowerCase().includes(state.exQ)));
+    const SRC = { quick: 'Quick comment', review: 'Approved in review', manual: 'Added by you', import: 'Imported' };
+    const head = '<div class="ex-row ex-head"><span>#</span><span>Category</span><span>Post it replied to</span><span>Your comment</span><span>Source</span><span></span></div>';
+    box.innerHTML = list.length ? head + list.map((e, i) => `<div class="ex-row">
+      <span class="ex-n">${i + 1}</span>
+      <div class="ex-c"><span class="lbl">Category</span><select class="ex-sel" data-id="${esc(e.id)}" aria-label="Category">${Object.keys(CATS).map((k) => `<option value="${k}"${k === e.category ? ' selected' : ''}>${CATS[k]}</option>`).join('')}</select></div>
+      <div class="ex-p"><span class="lbl">Post it replied to</span>${e.post ? esc(e.post.slice(0, 220)) : '<em>Not added</em>'}</div>
+      <div class="ex-t"><span class="lbl">Your comment</span>${esc(e.comment)}<small>${e.comment.trim().split(/\s+/).length} words</small></div>
+      <div class="ex-s"><span class="lbl">Source</span>${esc(SRC[e.source] || 'Saved')}<small>${esc((e.created || '').slice(0, 10))}</small></div>
+      <div class="ex-x"><button class="link" type="button" data-del="${esc(e.id)}">Delete</button></div></div>`).join('') : '<p class="note">' + (state.ex.length ? 'No comments match.' : 'Nothing saved yet.') + '</p>';
     box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
       try {
         const gone = state.ex.find((q) => q.id === b.dataset.del);
@@ -200,9 +204,9 @@
   }
   async function loadExamples() { try { state.ex = (await api('/api/examples')).examples || []; } catch (e) { state.ex = []; } renderExLine(); }
   $('ex-cat').innerHTML = '<option value="">Auto detect</option>' + Object.keys(CATS).map((k) => `<option value="${k}">${CATS[k]}</option>`).join('');
-  const openEx = () => { renderExList(); $('ex-drawer').hidden = false; document.body.classList.add('no-scroll'); };
-  const closeEx = () => { $('ex-drawer').hidden = true; document.body.classList.remove('no-scroll'); };
-  $('ex-close').addEventListener('click', closeEx); $('ex-bg').addEventListener('click', closeEx);
+  const openEx = () => { showVoice(); setTimeout(() => { const s = $('vs-saved'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); };
+  state.exQ = '';
+  $('ex-search').addEventListener('input', (e) => { state.exQ = e.target.value.toLowerCase(); renderExList(); });
   $('ex-add').addEventListener('click', async () => {
     try {
       const r = await post('/api/examples', { comment: $('ex-comment').value, post: $('ex-post').value, category: $('ex-cat').value || undefined, source: 'manual' });
@@ -240,11 +244,12 @@
       ${a.runs.length ? `<table class="acc-t"><thead><tr><th>Run</th><th>As written</th><th>Edited</th><th>Rejected</th><th>Rate</th></tr></thead><tbody>${a.runs.map((r) => `<tr><td>${esc(r.run.replace('run_', ''))}</td><td>${r.kept}</td><td>${r.edited}</td><td>${r.rejected}</td><td><b>${r.rate}%</b></td></tr>`).join('')}</tbody></table>` : ''}
       <p class="hint">${a.flagged} comment${a.flagged === 1 ? '' : 's'} had a warning (for example sounds like AI). Edits made before this update are counted as written.</p>`;
     const s = a.by_source || {};
-    $('vs-sources').innerHTML = `<b>${a.samples}</b> of ${a.samples_max} samples saved: ${s.import || 0} imported, ${s.quick || 0} from quick comments, ${s.review || 0} approved in reviews, ${s.manual || 0} added by hand.`;
+    renderExList(); $('vs-count').textContent = `${a.samples} of ${a.samples_max}`;
+    $('vs-sources').innerHTML = `Saved so far: ${s.import || 0} imported, ${s.quick || 0} from quick comments, ${s.review || 0} approved in reviews, ${s.manual || 0} added by hand.`;
   }
   async function loadVoice() {
     $('acc-board').innerHTML = '<p class="hint">Loading…</p>';
-    try { renderAcc(await api('/api/accuracy')); } catch (e) { $('acc-board').innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+    try { await loadExamples(); renderAcc(await api('/api/accuracy')); } catch (e) { $('acc-board').innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
   }
   function showVoice() {
     if (!state.user) { state.authTab = 'signup'; showAuth('Create a free account to train the AI on your style.'); return; }
@@ -264,7 +269,6 @@
     } catch (e) { $('vs-msg').textContent = e.message; }
     ev.target.value = '';
   });
-  $('vs-manage').addEventListener('click', openEx);
   $('m-voice').addEventListener('click', showVoice); $('voice-btn').addEventListener('click', showVoice);
   $('voice-back').addEventListener('click', () => showView(state.prevView === 'results' && state.rows.length ? 'results' : 'setup'));
   const post_ = post;
@@ -382,7 +386,7 @@
   const openDrawer = () => { $('drawer').hidden = false; document.body.classList.add('no-scroll'); renderTabs(); renderList(); };
   const closeDrawer = () => { $('drawer').hidden = true; document.body.classList.remove('no-scroll'); };
   $('open-list').addEventListener('click', openDrawer); $('drawer-close').addEventListener('click', closeDrawer); $('drawer-bg').addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('drawer').hidden) closeDrawer(); if (!$('ex-drawer').hidden) closeEx(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('drawer').hidden) closeDrawer(); } });
   function renderTabs() {
     $('tabs').innerHTML = FILTERS.map(([k, l]) => `<button type="button" role="tab" data-f="${k}" aria-selected="${state.filter === k}">${l}</button>`).join('');
     $('tabs').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderTabs(); renderList(); }));

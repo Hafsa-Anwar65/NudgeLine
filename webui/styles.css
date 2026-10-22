@@ -515,3 +515,34 @@ textarea.big { min-height: 150px; }
 
 .toast.act { pointer-events: auto; display: flex; align-items: center; gap: 14px; }
 .toast button { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 800; cursor: pointer; padding: 0; }
+
+.sec-note { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--muted); }
+.ex-tools { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 4px 0 12px; }
+.ex-tools .ex-filter { margin: 0; }
+.ex-tools input { max-width: 280px; min-height: 38px; }
+#vs-saved .ex-list { grid-template-columns: repeat(2, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 800px) { #vs-saved .ex-list { grid-template-columns: 1fr; } }
+#vs-saved .ex-item p { font-size: 15px; }
+
+/* saved comments as a report table */
+#vs-saved .ex-list { display: block; border: 1px solid var(--edge); }
+#vs-saved .ex-row { display: grid; grid-template-columns: 40px 170px minmax(160px, 1fr) minmax(240px, 1.8fr) 130px 70px; gap: 16px; padding: 14px 16px; border-top: 1px solid var(--edge); align-items: start; font-size: 14px; line-height: 1.55; }
+#vs-saved .ex-row:first-child { border-top: 0; }
+#vs-saved .ex-head { background: var(--field); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 10px 16px; }
+#vs-saved .ex-row:not(.ex-head):nth-child(even) { background: var(--bg); }
+#vs-saved .ex-n { color: var(--muted); font-weight: 700; }
+#vs-saved .ex-p { color: var(--muted); }
+#vs-saved .ex-p em { opacity: .7; }
+#vs-saved .ex-t { color: var(--text); font-size: 14.5px; white-space: pre-wrap; }
+#vs-saved .ex-t small, #vs-saved .ex-s small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+#vs-saved .ex-s { color: var(--muted); }
+#vs-saved .ex-x { text-align: right; }
+#vs-saved .ex-x .link { color: var(--bad); font-weight: 700; }
+#vs-saved .ex-sel { width: 100%; }
+#vs-saved .lbl { display: none; }
+@media (max-width: 900px) {
+  #vs-saved .ex-head { display: none; }
+  #vs-saved .ex-row { grid-template-columns: 1fr; gap: 8px; }
+  #vs-saved .lbl { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 2px; }
+  #vs-saved .ex-n { display: none; } #vs-saved .ex-x { text-align: left; }
+}
