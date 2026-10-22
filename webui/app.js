@@ -81,6 +81,7 @@
       box.appendChild(b);
     });
     $('tone-desc').textContent = TONE_DESC[state.tone] || '';
+    renderQuickOpts();
   }
 
   // Make a text box as tall as its text, so long comments never need inner scrolling.
@@ -98,6 +99,16 @@
       box.appendChild(b);
     });
     $('length-desc').textContent = LENGTH_DESC[state.length] || '';
+    renderQuickOpts();
+  }
+  // Same length and tone choices inside the Quick comment card (kept in sync with step 2).
+  function renderQuickOpts() {
+    if (!$('q-len')) return;
+    const names = { short: 'Short', long: 'Longer', both: 'Short + Longer' };
+    $('q-len').innerHTML = LENGTHS.map(([v]) => `<button type="button" role="radio" data-v="${v}" aria-checked="${v === state.length}">${names[v]}</button>`).join('');
+    $('q-tone').innerHTML = (state.tones || []).map((t) => `<button type="button" role="radio" data-v="${esc(t)}" aria-checked="${t === state.tone}">${esc(t[0].toUpperCase() + t.slice(1))}</button>`).join('');
+    $('q-len').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.length = b.dataset.v; renderLength(); }));
+    $('q-tone').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.tone = b.dataset.v; renderTone(); }));
   }
 
   function showFile(info) {

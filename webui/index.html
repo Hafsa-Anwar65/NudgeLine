@@ -116,6 +116,10 @@
         <h2><span class="n">&#9889;</span> Quick comment <em class="opt">no file needed</em></h2>
         <p class="hint" style="margin:-6px 0 12px">Paste one post and get a comment you can copy. It uses your service, about line and tone from the sections below.</p>
         <textarea id="q-post" rows="4" maxlength="2000" placeholder="Paste the post text here…"></textarea>
+        <div class="q-opts">
+          <div class="rw-g"><span class="rw-l">Length</span><div id="q-len" class="seg seg-sm" role="radiogroup" aria-label="Comment length"></div></div>
+          <div class="rw-g"><span class="rw-l">Tone</span><div id="q-tone" class="seg seg-sm" role="radiogroup" aria-label="Tone"></div></div>
+        </div>
         <div class="q-row"><button id="q-go" class="btn btn-primary btn-sm" type="button">Write comment</button><span id="q-hint" class="hint"></span></div>
         <div id="q-out" class="q-out" hidden>
           <div class="chips" id="q-chips"></div>

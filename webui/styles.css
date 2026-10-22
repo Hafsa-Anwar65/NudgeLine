@@ -459,3 +459,10 @@ textarea.big { min-height: 150px; }
 *, *::before, *::after { border-radius: 0 !important; }
 .dot, .av-dot, .ev .lvl { border-radius: 50% !important; }
 :focus-visible { border-radius: 0 !important; }
+
+.q-opts { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 14px 0 0; }
+.q-opts .seg-sm { display: inline-grid; grid-template-columns: repeat(auto-fit, minmax(84px, auto)); }
+.q-opts .seg-sm button { padding: 8px 14px; font-size: 14.5px; white-space: nowrap; }
+.q-opts .seg { display: inline-flex; gap: 4px; width: auto; grid-template-columns: none; }
+.q-opts .seg button { flex: none; }
+.q-opts + .q-row { margin-top: 16px; }
