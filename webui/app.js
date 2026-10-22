@@ -35,7 +35,11 @@
     return row;
   }
   const post = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2400); }
+  function toast(msg, undo) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('on'); t.classList.toggle('act', !!undo);
+    if (undo) { const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Undo'; b.addEventListener('click', () => { t.classList.remove('on'); undo(); }); t.appendChild(b); }
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), undo ? 8000 : 2400);
+  }
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 
   $('theme-toggle').addEventListener('click', () => {
@@ -142,7 +146,7 @@
   async function quickComment() {
     const post = $('q-post').value.trim();
     if (post.length < 5) { $('q-hint').textContent = 'Paste the post text first.'; return; }
-    $('q-approve').textContent = 'Approve and save as example'; $('q-approve').disabled = false;
+    $('q-approve').textContent = 'Approve and save as example'; $('q-approve').disabled = false; qRef = '';
     $('q-go').disabled = true; $('q-again').disabled = true; $('q-go').textContent = 'Writing…'; $('q-hint').textContent = '';
     try {
       const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, length: state.length, dry_run: $('f-dry').checked });
@@ -183,7 +187,11 @@
       <span class="ex-act"><select class="ex-sel" data-id="${esc(e.id)}" aria-label="Category">${Object.keys(CATS).map((k) => `<option value="${k}"${k === e.category ? ' selected' : ''}>${CATS[k]}</option>`).join('')}</select>
       <button class="link" type="button" data-del="${esc(e.id)}">Delete</button></span></div></div>`).join('') : '<p class="note">Nothing saved yet.</p>';
     box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
-      try { const r = await post('/api/examples', { action: 'delete', id: b.dataset.del }); state.ex = r.examples; renderExList(); renderExLine(); } catch (e) { toast(e.message); }
+      try {
+        const gone = state.ex.find((q) => q.id === b.dataset.del);
+        const r = await post('/api/examples', { action: 'delete', id: b.dataset.del }); state.ex = r.examples; renderExList(); renderExLine();
+        toast('Comment deleted', async () => { try { state.ex = (await post('/api/examples', { action: 'restore', example: gone })).examples; renderExList(); renderExLine(); toast('Restored'); } catch (e) { toast(e.message); } });
+      } catch (e) { toast(e.message); }
     }));
     box.querySelectorAll('.ex-sel').forEach((s) => s.addEventListener('change', async () => {
       try { const r = await post('/api/examples', { action: 'category', id: s.dataset.id, category: s.value }); state.ex = r.examples; renderExList(); toast('Moved to ' + CATS[s.value]); } catch (e) { toast(e.message); }
@@ -200,14 +208,20 @@
       state.ex = r.examples; $('ex-comment').value = ''; $('ex-post').value = ''; renderExList(); renderExLine(); toast(r.added ? 'Saved' : 'That comment was already saved');
     } catch (e) { toast(e.message); }
   });
+  let qRef = '';
+  async function undoQuick() {
+    try { state.ex = (await post('/api/examples', { action: 'remove_ref', ref: qRef })).examples; renderExLine(); $('q-approve').textContent = 'Approve and save as example'; qRef = ''; toast('Removed from your samples'); } catch (e) { toast(e.message); }
+  }
   $('q-approve').addEventListener('click', async () => {
+    if (qRef) return undoQuick();
     const items = [{ comment: $('q-comment').value, post: $('q-post').value }];
     if (!$('q-long-wrap').hidden) items.push({ comment: $('q-long').value, post: $('q-post').value });
     try {
-      const r = await post('/api/examples', { items, source: 'quick' });
-      state.ex = r.examples; renderExLine(); $('q-approve').textContent = 'Saved ✓'; $('q-approve').disabled = true;
-      toast(r.added ? 'Approved. The AI will learn from it' : 'Already saved');
-    } catch (e) { toast(e.message); }
+      qRef = 'q' + Date.now().toString(36);
+      const r = await post('/api/examples', { items, source: 'quick', ref: qRef });
+      state.ex = r.examples; renderExLine();
+      if (r.added) { $('q-approve').textContent = 'Saved. Click to undo'; toast('Approved. The AI will learn from it', undoQuick); } else { qRef = ''; toast('Already saved'); }
+    } catch (e) { qRef = ''; toast(e.message); }
   });
 
   // ---------- voice and accuracy ----------
@@ -483,8 +497,12 @@
       if (b.dataset.act === 'approve' && r.qa_flags && !confirm('This draft has warnings:\n\n' + r.qa_flags + '\n\nApprove it anyway?')) return;
       try {
         Object.assign(r, await post('/api/update', { run: state.run, id: r.id, comment: val('comment'), comment_long: val('comment_long'), subject: val('subject'), body: val('body'), decision: b.dataset.act }));
-        if (b.dataset.act === 'approve' && !state.demo) loadExamples();
+        if (!state.demo) loadExamples();
+        const rid = r.id;
         if (b.dataset.act !== 'reset') nextOpen(r.id); renderAll(); window.scrollTo({ top: 0 });
+        if (b.dataset.act === 'approve' && !state.demo) toast('Approved and saved as a sample', async () => {
+          try { const x = state.rows.find((q) => q.id === rid); Object.assign(x, await post('/api/update', { run: state.run, id: rid, decision: 'reset' })); state.sel = rid; loadExamples(); renderAll(); toast('Approval undone'); } catch (e) { toast(e.message); }
+        });
       } catch (e) { toast(e.message); }
     }));
     $('prev').addEventListener('click', () => step(-1)); $('next').addEventListener('click', () => step(1));
