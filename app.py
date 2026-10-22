@@ -14,6 +14,7 @@ import random
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import uuid
 import time
@@ -81,7 +82,7 @@ def udir(uid):
 
 # ---------- approved comments the AI learns your voice from ----------
 EX_LOCK = threading.Lock()
-EX_MAX = 150
+EX_MAX = 300
 
 
 def load_examples(uid):
@@ -122,8 +123,90 @@ def delete_example(uid, ex_id):
 
 def pick_examples(uid, n=5):
     """A few of your recent approved comments, shown to the AI as samples of your voice."""
-    data = load_examples(uid)[-40:]
+    data = load_examples(uid)
     return random.sample(data, min(n, len(data)))
+
+
+def parse_samples(name, raw):
+    """Read comments (and optionally the post each one answered) from a csv, xlsx, json or txt file."""
+    suffix = Path(name).suffix.lower()
+    pairs = []
+    if suffix in (".txt", ".md"):
+        text = raw.decode("utf-8-sig", errors="ignore")
+        return [(c.strip(), "") for c in re.split(r"\n\s*\n", text) if c.strip()]
+    if suffix == ".json":
+        data = json.loads(raw.decode("utf-8-sig"))
+        if isinstance(data, dict):
+            data = data.get("comments") or data.get("items") or []
+        for it in data if isinstance(data, list) else []:
+            if isinstance(it, str):
+                pairs.append((it, ""))
+            elif isinstance(it, dict):
+                pairs.append((str(it.get("comment") or it.get("text") or it.get("reply") or ""),
+                              str(it.get("post") or it.get("post_text") or it.get("notes") or "")))
+        return pairs
+    if suffix not in (".csv", ".xlsx", ".xlsm"):
+        raise ValueError("Use a .csv, .xlsx, .json or .txt file.")
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / ("samples" + suffix)
+        tmp.write_bytes(raw)
+        try:
+            rows = both._read_rows(tmp)
+        except SystemExit as e:
+            raise ValueError(str(e.code))
+    for r in rows:
+        low = {re.sub(r"[^a-z]", "", str(k).lower()): v for k, v in r.items()}
+        c = next((low[k] for k in ("comment", "comments", "reply", "text", "mycomment") if low.get(k)), "")
+        p = next((low[k] for k in ("post", "posttext", "notes", "original") if low.get(k)), "")
+        pairs.append((str(c), str(p)))
+    return pairs
+
+
+def accuracy(uid):
+    """How much of what the AI wrote you kept: computed from every approved or rejected comment in your runs."""
+    import difflib
+    runs, tot = [], {"approved": 0, "rejected": 0, "kept": 0, "edited": 0, "flagged": 0, "pending": 0, "sim": 0.0}
+    for rid in list_runs(uid)[:30]:
+        try:
+            _, rows = review.read_rows(run_path(uid, rid))
+        except Exception:
+            continue
+        r = {"run": rid, "approved": 0, "rejected": 0, "kept": 0, "edited": 0, "pending": 0}
+        for row in rows:
+            c = (row.get("comment") or "").strip()
+            if not c:
+                continue
+            st = row.get("status")
+            if st == "approved":
+                orig = (row.get("comment_ai") or "").strip()
+                r["approved"] += 1
+                if not orig or orig == c:
+                    r["kept"] += 1
+                    tot["sim"] += 1
+                else:
+                    r["edited"] += 1
+                    tot["sim"] += difflib.SequenceMatcher(None, orig, c).ratio()
+            elif st == "rejected":
+                r["rejected"] += 1
+            else:
+                r["pending"] += 1
+            if any(quality.is_comment_flag(f) for f in (row.get("qa_flags") or "").split("; ") if f.strip()):
+                tot["flagged"] += 1
+        for k in ("approved", "rejected", "kept", "edited", "pending"):
+            tot[k] += r[k]
+        if r["approved"] + r["rejected"]:
+            r["rate"] = round(100 * r["kept"] / (r["approved"] + r["rejected"]))
+            runs.append(r)
+    decided = tot["approved"] + tot["rejected"]
+    ex = load_examples(uid)
+    return {"decided": decided, "approved": tot["approved"], "rejected": tot["rejected"], "kept": tot["kept"],
+            "edited": tot["edited"], "pending": tot["pending"], "flagged": tot["flagged"],
+            "kept_rate": round(100 * tot["kept"] / decided) if decided else None,
+            "approve_rate": round(100 * tot["approved"] / decided) if decided else None,
+            "closeness": round(100 * tot["sim"] / tot["approved"]) if tot["approved"] else None,
+            "samples": len(ex), "samples_max": EX_MAX,
+            "by_source": {s: sum(1 for e in ex if e.get("source") == s) for s in ("quick", "review", "manual", "import")},
+            "runs": list(reversed(runs[:8]))}
 
 
 def list_runs(uid):
@@ -283,6 +366,10 @@ def update_row(uid, run_id, row_id, payload):
         row = next((r for r in rows if r.get("id") == row_id), None)
         if not row:
             raise FileNotFoundError("row not found")
+        if "comment_ai" not in fields:
+            fields = fields + ["comment_ai"]
+        if not row.get("comment_ai"):
+            row["comment_ai"] = row.get("comment", "")  # remember what the AI wrote before you edit it
         for k in EDITABLE:
             if k == "comment_long" and not row.get("comment_long"):
                 continue  # only rows written in "both" mode have a longer comment
@@ -335,6 +422,9 @@ def rewrite_comment(uid, user, run_id, row_id, length, tone):
         if "comment_long" not in fields:
             fields = fields + ["comment_long"]
         row["comment"], row["comment_long"] = info["comment"], info["comment_long"]
+        if "comment_ai" not in fields:
+            fields = fields + ["comment_ai"]
+        row["comment_ai"] = info["comment"]
         row["comment_note"] = info["reason"]
         keep = [f for f in (row.get("qa_flags") or "").split("; ") if f.strip() and not quality.is_comment_flag(f)]
         row["qa_flags"] = "; ".join(keep + info["flags"])
@@ -458,6 +548,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": f"{type(e).__name__}: {e}"})
             if url.path == "/api/examples":
                 return self.send(200, {"examples": list(reversed(load_examples(uid)))})
+            if url.path == "/api/accuracy":
+                return self.send(200, accuracy(uid))
             if url.path == "/api/results":
                 run = parse_qs(url.query).get("run", [""])[0]
                 return self.send(200, {"run": run, "rows": read_run(uid, run), "meta": public_meta(read_meta(uid, run), u)})
@@ -597,6 +689,18 @@ class Handler(BaseHTTPRequestHandler):
                 if d.get("action") != "approve_ready":
                     raise ValueError("Unknown action")
                 return self.send(200, {"approved": approve_ready(uid, d.get("run", ""))})
+            if url.path == "/api/examples/import":
+                name = Path(self.headers.get("X-Filename", "")).name
+                if name:
+                    pairs = parse_samples(name, self.body())
+                else:
+                    pairs = parse_samples("pasted.txt", str(self.json_body().get("text", "")).encode("utf-8"))
+                pairs = [(c, p) for c, p in pairs if len(str(c).strip()) >= 8]
+                if not pairs:
+                    raise ValueError("No comments found. Put one comment per row (column named comment), or separate pasted comments with a blank line.")
+                added, total = add_examples(uid, pairs[:500], "import")
+                return self.send(200, {"found": len(pairs), "added": added, "count": total, "skipped": len(pairs) - added,
+                                       "examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/examples":
                 d = self.json_body()
                 if d.get("action") == "delete":

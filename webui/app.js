@@ -60,7 +60,7 @@
   }
   function showView(v) {
     state.view = v;
-    ['setup', 'results', 'auth', 'plans', 'admin'].forEach((n) => { $('view-' + n).hidden = v !== n; });
+    ['setup', 'results', 'auth', 'plans', 'admin', 'voice'].forEach((n) => { $('view-' + n).hidden = v !== n; });
     $('export-bar').hidden = v !== 'results';
     $('acct-menu').hidden = true;
     $('stepper').style.visibility = v === 'setup' || v === 'results' ? 'visible' : 'hidden';
@@ -196,6 +196,50 @@
       toast(r.added ? 'Approved. The AI will learn from it' : 'Already saved');
     } catch (e) { toast(e.message); }
   });
+
+  // ---------- voice and accuracy ----------
+  function accMsg(a) {
+    if (!a.decided) return 'No decisions yet. Approve or reject comments in a review and this board fills in.';
+    if (a.kept_rate >= 75) return 'Great. Most comments are ready as written.';
+    if (a.kept_rate >= 45) return 'Getting there. Import more samples to close the gap.';
+    return 'Many comments get edited. Import more of your own comments so the AI sounds more like you.';
+  }
+  function renderAcc(a) {
+    const stat = (v, l) => `<div class="stat"><b>${v === null ? '–' : v + '%'}</b><span>${l}</span></div>`;
+    $('acc-board').innerHTML = `<div class="stats">${stat(a.kept_rate, 'Used as written')}${stat(a.approve_rate, 'Approved')}${stat(a.closeness, 'Close to AI draft')}</div>
+      <p class="hint">${esc(accMsg(a))}</p>
+      <div class="bar"><i class="bk" style="width:${a.decided ? 100 * a.kept / a.decided : 0}%"></i><i class="be" style="width:${a.decided ? 100 * a.edited / a.decided : 0}%"></i><i class="br" style="width:${a.decided ? 100 * a.rejected / a.decided : 0}%"></i></div>
+      <p class="leg"><span><i class="bk"></i>${a.kept} as written</span><span><i class="be"></i>${a.edited} edited</span><span><i class="br"></i>${a.rejected} rejected</span><span>${a.pending} waiting</span></p>
+      ${a.runs.length ? `<table class="acc-t"><thead><tr><th>Run</th><th>As written</th><th>Edited</th><th>Rejected</th><th>Rate</th></tr></thead><tbody>${a.runs.map((r) => `<tr><td>${esc(r.run.replace('run_', ''))}</td><td>${r.kept}</td><td>${r.edited}</td><td>${r.rejected}</td><td><b>${r.rate}%</b></td></tr>`).join('')}</tbody></table>` : ''}
+      <p class="hint">${a.flagged} comment${a.flagged === 1 ? '' : 's'} had a warning (for example sounds like AI). Edits made before this update are counted as written.</p>`;
+    const s = a.by_source || {};
+    $('vs-sources').innerHTML = `<b>${a.samples}</b> of ${a.samples_max} samples saved: ${s.import || 0} imported, ${s.quick || 0} from quick comments, ${s.review || 0} approved in reviews, ${s.manual || 0} added by hand.`;
+  }
+  async function loadVoice() {
+    $('acc-board').innerHTML = '<p class="hint">Loading…</p>';
+    try { renderAcc(await api('/api/accuracy')); } catch (e) { $('acc-board').innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+  }
+  function showVoice() {
+    if (!state.user) { state.authTab = 'signup'; showAuth('Create a free account to train the AI on your style.'); return; }
+    if (state.view !== 'voice') state.prevView = state.view;
+    $('vs-msg').textContent = ''; showView('voice'); loadVoice();
+  }
+  const impDone = (r) => { state.ex = r.examples; renderExLine(); $('vs-msg').textContent = `${r.added} added${r.skipped ? `, ${r.skipped} skipped (duplicates or too short)` : ''}.`; toast(r.added + ' samples added'); loadVoice(); };
+  $('vs-add').addEventListener('click', async () => {
+    try { const r = await post('/api/examples/import', { text: $('vs-text').value }); $('vs-text').value = ''; impDone(r); } catch (e) { $('vs-msg').textContent = e.message; }
+  });
+  $('vs-file').addEventListener('change', async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    try {
+      const res = await fetch('/api/examples/import', { method: 'POST', headers: { 'X-Nudgeline': '1', 'X-Filename': f.name }, body: f, credentials: 'same-origin' });
+      const r = await res.json(); if (!res.ok) throw new Error(r.error || 'Import failed');
+      impDone(r);
+    } catch (e) { $('vs-msg').textContent = e.message; }
+    ev.target.value = '';
+  });
+  $('vs-manage').addEventListener('click', openEx);
+  $('m-voice').addEventListener('click', showVoice);
+  $('voice-back').addEventListener('click', () => showView(state.prevView === 'results' && state.rows.length ? 'results' : 'setup'));
   const post_ = post;
   $('q-go').addEventListener('click', quickComment); $('q-again').addEventListener('click', quickComment);
   $('q-copy').addEventListener('click', () => copy($('q-comment').value, 'Comment'));

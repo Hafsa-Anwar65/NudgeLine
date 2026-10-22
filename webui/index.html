@@ -25,6 +25,7 @@
         <div id="acct-menu" class="menu" hidden>
           <div class="menu-who"><b id="m-name"></b><small id="m-email"></small></div>
           <button type="button" id="m-plans">Plans and subscription</button>
+          <button type="button" id="m-voice">Voice and accuracy</button>
           <button type="button" id="m-admin" hidden>Admin dashboard <span id="m-badge" class="nbadge" hidden></span></button>
           <button type="button" id="m-out">Sign out</button>
         </div>
@@ -92,6 +93,26 @@
   </section>
 
   <!-- ============ PLANS ============ -->
+  <section id="view-voice" class="view voice-view" hidden>
+    <div class="sum-head"><div><h1>Voice and accuracy</h1><p class="hint">Teach the AI how you write, and see how often you keep what it writes.</p></div>
+      <button id="voice-back" class="btn btn-ghost btn-sm" type="button">← Back</button></div>
+    <div class="vgrid">
+      <section class="card">
+        <h2 class="sec-h">Import samples</h2>
+        <p class="hint">Add comments you have already written. The AI reads them and copies your style. One comment per row (column named <b>comment</b>, optional <b>post</b>), or one per paragraph in a text file.</p>
+        <label class="drop" id="vs-drop" for="vs-file"><strong>Choose a file</strong><span>.csv, .xlsx, .json or .txt</span></label>
+        <input id="vs-file" type="file" accept=".csv,.xlsx,.xlsm,.json,.txt,.md" hidden>
+        <label class="lbl" for="vs-text">Or paste comments (leave a blank line between each)</label>
+        <textarea id="vs-text" rows="6" placeholder="Love the direction of this. If you want a second pair of eyes on the layout, happy to help.&#10;&#10;Congrats on the launch! The colours work really well."></textarea>
+        <div class="vs-row"><button id="vs-add" class="btn btn-primary btn-sm" type="button">Import pasted comments</button><span id="vs-msg" class="hint"></span></div>
+      </section>
+      <section class="card">
+        <h2 class="sec-h">Accuracy board</h2>
+        <div id="acc-board"></div>
+      </section>
+    </div>
+    <section class="card"><h2 class="sec-h">Your saved samples <button id="vs-manage" class="link" type="button">Manage</button></h2><div id="vs-sources" class="hint"></div></section>
+  </section>
   <section id="view-plans" class="view plans-view" hidden>
     <div class="sum-head"><div><h1>Plans and subscription</h1><p class="hint">Pick the plan that fits your lists. You can change it any time.</p></div>
       <button id="plans-back" class="btn btn-ghost btn-sm" type="button">← Back</button></div>
