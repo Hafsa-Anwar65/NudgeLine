@@ -434,3 +434,23 @@ textarea.big:focus, input.big:focus { background: var(--bg-2); }
 .ctabs { background: var(--hover); border: 0; }
 .toast { border-radius: 8px; }
 .drawer-panel input[type=search] { width: 100%; }
+
+
+/* ===== Full-width review with ruled section headings ===== */
+.prog, .focus { max-width: none; }
+.focus { padding-bottom: 110px; }
+.detail { padding: 28px 32px 32px; }
+.cols { display: grid; grid-template-columns: 1fr; gap: 0 28px; align-items: start; }
+@media (min-width: 1000px) { .cols:not(.one) { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); } }
+.col { min-width: 0; }
+.part { margin-top: 24px; padding: 0; background: var(--bg-2); border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; }
+.part > h3, .part > summary { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 20px; font-size: 15px; font-weight: 650; color: var(--text); background: var(--hover); border-bottom: 1px solid var(--edge); text-transform: none; letter-spacing: 0; }
+.part > summary h3 { margin: 0; padding: 0; background: none; border: 0; font-size: 15px; }
+.mail { border-top: 1px solid var(--edge); padding-top: 0; }
+.mail:not([open]) > summary { border-bottom: 0; }
+.pb { padding: 20px; }
+.pb .post { margin: 0; }
+.pb .rw { margin-top: 18px; }
+textarea.big { min-height: 150px; }
+.mail .sub-prev { font-weight: 500; color: var(--muted); }
+.d-actions { margin-top: 28px; }

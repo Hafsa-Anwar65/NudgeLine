@@ -308,8 +308,9 @@
       <header class="lead-h"><div><h2>${esc(r.company || r.name || r.email || 'Lead')}</h2><div class="d-sub">${esc([r.name, r.email].filter(Boolean).join(' · '))}</div>${meta ? `<div class="meta">${esc(meta)}</div>` : ''}</div>
         <span class="badge ${s.c}">${s.t}</span></header>
       ${r.qa_flags ? `<div class="warnline"><b>Check before approving:</b> ${esc(r.qa_flags)}</div>` : ''}
-      ${r.post_text ? `<section class="part"><h3>Their post</h3><blockquote class="post">${esc(r.post_text)}</blockquote></section>` : ''}
-      <section class="part"><h3>Your comment</h3>
+      <div class="cols${hasEmail ? '' : ' one'}"><div class="col">
+      ${r.post_text ? `<section class="part"><h3>Their post</h3><div class="pb"><blockquote class="post">${esc(r.post_text)}</blockquote></div></section>` : ''}
+      <section class="part"><h3>Your comment</h3><div class="pb">
         ${r.comment ? `
         ${both ? `<div class="ctabs" role="tablist"><button type="button" role="tab" data-tab="short" aria-selected="${tab === 'short'}">Short</button><button type="button" role="tab" data-tab="long" aria-selected="${tab === 'long'}">Longer</button></div>` : ''}
         <textarea data-f="comment" rows="4" class="big"${tab === 'long' ? ' hidden' : ''}>${esc(r.comment)}</textarea>
@@ -319,12 +320,13 @@
           <span class="wc" id="wc"></span></div>`
         : `<p class="note">No comment was written: ${esc((r.comment_note || '').replace(/^skipped:\s*/, '') || 'nothing to reply to')}</p>`}
         ${r.post_text ? rewriteBar(r, !r.comment) : ''}
-      </section>
-      ${hasEmail ? `<details class="part mail"><summary><h3>Email</h3><span class="sub-prev">${esc(r.subject)}</span></summary>
+      </div></section></div>
+      ${hasEmail ? `<div class="col"><details class="part mail"${window.innerWidth >= 1000 ? ' open' : ''}><summary><h3>Email</h3><span class="sub-prev">${esc(r.subject)}</span></summary><div class="pb">
         <label class="lbl" for="e-sub">Subject</label><input id="e-sub" class="big" data-f="subject" type="text" value="${esc(r.subject)}">
         <label class="lbl" for="e-body">Message</label><textarea id="e-body" class="big" data-f="body" rows="10">${esc(r.body)}</textarea>
-        <div class="sec-row"><button class="btn btn-ghost" data-copy="email" type="button">Copy email</button></div></details>`
-        : (r.angle ? `<p class="note">No email: ${esc(r.angle)}</p>` : '')}
+        <div class="sec-row"><button class="btn btn-ghost" data-copy="email" type="button">Copy email</button></div></div></details></div>`
+        : (r.angle ? `<div class="col"><p class="note">No email: ${esc(r.angle)}</p></div>` : '')}
+      </div>
       <div class="d-actions">
         ${locked ? '' : r.status === 'approved' || r.status === 'rejected' ? '<button class="btn btn-ghost" data-act="reset" type="button">Undo</button>'
           : '<button class="btn btn-ok btn-lg-ok" data-act="approve" type="button">✓ Approve</button><button class="btn btn-ghost" data-act="reject" type="button">Reject</button>'}
