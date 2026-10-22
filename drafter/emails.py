@@ -87,6 +87,8 @@ def finish_email(res, profile, source_text, template=""):
     """Turn the model's JSON into (subject, full_body, flags). full_body includes sign-off/opt-out."""
     subject = (res.get("subject") or "").strip()
     body = res["body"].strip()
+    if not template:  # your own template is kept exactly as you wrote it
+        subject, body = (re.sub(r"\s*[\u2013\u2014]\s*", ", ", x) for x in (subject, body))
     flags = quality.email_flags(subject, body, source_text + " " + profile["service"] + " " + profile["about"], bool(template))
     tail = profile["opt_out_line"] if template else f"{profile['signoff']}\n\n{profile['opt_out_line']}"
     return subject, f"{body}\n\n{tail}", flags
@@ -180,7 +182,7 @@ Rules:
 - Use ONLY facts given in the lead details. Never invent facts, numbers, results, mutual connections, prices, or things you "noticed". If details are thin, write a shorter, honest, generic email and set personalization to "low".
 - Open with something specific to them (their business, site, or situation), not with "I hope this finds you well" or an introduction of yourself.
 - Say plainly what {name} can help with, in one sentence, and make exactly one small, low-pressure ask (a quick reply or a short call).
-- Warm and human, no hype, no buzzwords, no exclamation marks, no emojis, no fake urgency.
+- Warm and human, no hype, no buzzwords, no exclamation marks, no emojis, no fake urgency. Write like a real person, never like an AI: plain words, no long dashes (— or –), no semicolons, no bullet points.
 - Write in the language of the lead's notes if they are not English; otherwise English.
 
 Reply with ONLY a JSON object, nothing else:
