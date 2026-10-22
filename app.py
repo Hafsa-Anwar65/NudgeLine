@@ -131,7 +131,7 @@ def set_example_category(uid, ex_id, cat):
         return len(data)
 
 
-def add_examples(uid, items, source, category=None):
+def add_examples(uid, items, source, category=None, ref=None):
     """items: list of (comment, post). Skips empty and duplicate comments."""
     with EX_LOCK:
         data = load_examples(uid)
@@ -144,12 +144,32 @@ def add_examples(uid, items, source, category=None):
                 continue
             have.add(key)
             data.append({"id": "e" + uuid.uuid4().hex[:10], "comment": comment, "post": str(post or "").strip()[:400],
-                         "source": source, "category": category if category in CAT_NAMES else guess_category(post, comment),
+                         "source": source, "ref": ref or "", "category": category if category in CAT_NAMES else guess_category(post, comment),
                          "created": datetime.now().isoformat(timespec="seconds")})
             added += 1
         data = data[-EX_MAX:]
         (udir(uid) / "examples.json").write_text(json.dumps(data), encoding="utf-8")
         return added, len(data)
+
+
+def remove_by_ref(uid, ref):
+    """Take back the samples that one approval added (used by Undo)."""
+    if not ref:
+        return 0
+    with EX_LOCK:
+        data = load_examples(uid)
+        keep = [e for e in data if e.get("ref") != ref]
+        (udir(uid) / "examples.json").write_text(json.dumps(keep), encoding="utf-8")
+        return len(data) - len(keep)
+
+
+def restore_example(uid, e):
+    with EX_LOCK:
+        data = load_examples(uid)
+        if any(x.get("id") == e.get("id") for x in data) or len(str(e.get("comment", "")).strip()) < 8:
+            return
+        data.append({k: str(e.get(k, ""))[:900] for k in ("id", "comment", "post", "source", "category", "ref", "created")})
+        (udir(uid) / "examples.json").write_text(json.dumps(data[-EX_MAX:]), encoding="utf-8")
 
 
 def delete_example(uid, ex_id):
@@ -745,6 +765,12 @@ class Handler(BaseHTTPRequestHandler):
                 if d.get("action") == "category":
                     set_example_category(uid, str(d.get("id", "")), str(d.get("category", "")))
                     return self.send(200, {"examples": list(reversed(load_examples(uid)))})
+                if d.get("action") == "remove_ref":
+                    remove_by_ref(uid, str(d.get("ref", "")))
+                    return self.send(200, {"examples": list(reversed(load_examples(uid)))})
+                if d.get("action") == "restore":
+                    restore_example(uid, d.get("example") or {})
+                    return self.send(200, {"examples": list(reversed(load_examples(uid)))})
                 if d.get("action") == "delete":
                     n = delete_example(uid, str(d.get("id", "")))
                     return self.send(200, {"count": n, "examples": list(reversed(load_examples(uid)))})
@@ -753,7 +779,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not any(len(c.strip()) >= 8 for c, _ in pairs):
                     raise ValueError("Write or paste a comment first (at least a few words).")
                 src = d.get("source") if d.get("source") in ("quick", "review", "manual") else "manual"
-                added, total = add_examples(uid, pairs, src, d.get("category"))
+                added, total = add_examples(uid, pairs, src, d.get("category"), str(d.get("ref", ""))[:40])
                 return self.send(200, {"added": added, "count": total, "examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/regenerate":
                 d = self.json_body()
@@ -763,8 +789,11 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/update":
                 d = self.json_body()
                 row = update_row(uid, d.get("run", ""), d.get("id", ""), d)
+                ref = f"{d.get('run', '')}:{d.get('id', '')}"
+                if d.get("decision") in ("approve", "reject", "reset"):
+                    remove_by_ref(uid, ref)  # undo or change of mind takes back the sample, re-approving replaces it
                 if d.get("decision") == "approve":  # an approved comment becomes a sample of your voice
-                    add_examples(uid, [(row.get("comment"), row.get("post_text")), (row.get("comment_long"), row.get("post_text"))], "review")
+                    add_examples(uid, [(row.get("comment"), row.get("post_text")), (row.get("comment_long"), row.get("post_text"))], "review", None, ref)
                 return self.send(200, row)
             self.fail(404, "Not found")
         except PermissionError as e:

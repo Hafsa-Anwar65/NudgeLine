@@ -142,6 +142,7 @@
   $('sample').addEventListener('click', async () => { try { showFile(await post('/api/sample', {})); } catch (e) { toast(e.message); } });
   $('sample-more').addEventListener('click', async () => { try { showFile(await post('/api/sample', { which: 'more' })); toast('20 sample leads added'); } catch (e) { toast(e.message); } });
 
+  let qRef = '';
   // ---------- quick comment: paste one post, get one comment ----------
   async function quickComment() {
     const post = $('q-post').value.trim();
@@ -208,7 +209,6 @@
       state.ex = r.examples; $('ex-comment').value = ''; $('ex-post').value = ''; renderExList(); renderExLine(); toast(r.added ? 'Saved' : 'That comment was already saved');
     } catch (e) { toast(e.message); }
   });
-  let qRef = '';
   async function undoQuick() {
     try { state.ex = (await post('/api/examples', { action: 'remove_ref', ref: qRef })).examples; renderExLine(); $('q-approve').textContent = 'Approve and save as example'; qRef = ''; toast('Removed from your samples'); } catch (e) { toast(e.message); }
   }

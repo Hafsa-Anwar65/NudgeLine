@@ -269,10 +269,15 @@
   <aside class="drawer-panel" role="dialog" aria-label="Your saved comments">
     <div class="drawer-h"><h2>Your saved comments</h2><button id="ex-close" class="btn btn-ghost btn-sm" type="button">Close</button></div>
     <p class="hint">The AI reads a few of these before it writes, so new comments sound like you and not like a bot. Approved comments are saved here. You can also paste ones you really posted.</p>
-    <label class="f">A comment you posted<textarea id="ex-comment" rows="3" maxlength="900" placeholder="Paste a comment you wrote or posted before"></textarea></label>
-    <label class="f">The post it replied to <em class="opt">(optional)</em><textarea id="ex-post" rows="2" maxlength="400" placeholder="Helps the AI see what kind of post it was"></textarea></label>
-    <button id="ex-add" class="btn btn-primary" type="button">Save comment</button>
+    <div id="ex-filter" class="ex-filter"></div>
     <div id="ex-list" class="ex-list"></div>
+    <details class="ex-add-box"><summary>+ Add a comment you posted</summary>
+      <label class="f"><span>A comment you posted</span><textarea id="ex-comment" rows="3" maxlength="900" placeholder="Paste a comment you wrote or posted before"></textarea></label>
+      <label class="f"><span>The post it replied to <em class="opt">(optional)</em></span><textarea id="ex-post" rows="2" maxlength="400" placeholder="Helps the AI see what kind of post it was"></textarea></label>
+      <label class="f"><span>Category</span><select id="ex-cat"></select></label>
+      <button id="ex-add" class="btn btn-primary" type="button">Save comment</button>
+    </details>
+
   </aside>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

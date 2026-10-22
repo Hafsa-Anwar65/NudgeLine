@@ -512,3 +512,6 @@ textarea.big { min-height: 150px; }
 .ex-add-box summary { cursor: pointer; font-weight: 700; color: var(--accent-text); }
 .ex-add-box .f { margin-top: 12px; display: grid; gap: 6px; }
 .ex-add-box .opt { display: inline; font-style: normal; font-weight: 400; color: var(--muted); }
+
+.toast.act { pointer-events: auto; display: flex; align-items: center; gap: 14px; }
+.toast button { background: transparent; border: 0; border-bottom: 1px solid currentColor; color: inherit; font: inherit; font-weight: 800; cursor: pointer; padding: 0; }
