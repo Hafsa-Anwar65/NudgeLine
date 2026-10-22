@@ -51,6 +51,20 @@ def humanize(text):
     return t
 
 
+FORCE_NOTE = ("\n\nIMPORTANT: Write the comment anyway. Any topic is fine, even if it has nothing to do with "
+              "what the writer offers. Be a helpful, friendly reply and do not pitch. Set relevant to true.")
+
+
+def ask_comment(llm, system, user_msg, fallback, length="short"):
+    """Ask for a comment. If the model refuses a post as 'not relevant', ask once more, firmly."""
+    budget = token_budget(length)
+    res = llm.ask_json(system, user_msg, fallback, max_tokens=budget)
+    info = interpret(res, length)
+    if "error" not in info and not info["comment"] and not getattr(llm, "dry_run", False):
+        info = interpret(llm.ask_json(system, user_msg + FORCE_NOTE, fallback, max_tokens=budget), length)
+    return info
+
+
 def interpret(res, length="short"):
     """Turn the model's JSON into clean fields. Returns a dict, or {"error": msg}.
 
@@ -59,9 +73,10 @@ def interpret(res, length="short"):
     """
     if "_error" in res:
         return {"error": res["_error"]}
-    relevant = bool(res.get("relevant"))
-    comment = humanize(res.get("comment")) if relevant else ""
-    comment_long = humanize(res.get("comment_long")) if relevant and length == "both" else ""
+    # Any post gets a comment: if the model wrote one, it counts, whatever it put in "relevant".
+    comment = humanize(res.get("comment"))
+    comment_long = humanize(res.get("comment_long")) if length == "both" else ""
+    relevant = bool(comment) or bool(res.get("relevant"))
     intent = quality.clamp_intent(res.get("intent_score"))
     flags = quality.comment_flags(comment, long=(length == "long"))
     flags += ["longer version: " + f for f in quality.comment_flags(comment_long, long=True)]
@@ -132,12 +147,28 @@ LENGTH_RULES = {
 }
 
 
+def examples_block(profile):
+    """Comments the user has approved before. Shown to the AI so new ones sound like the same person."""
+    items = [e for e in (profile.get("examples") or []) if e.get("comment")][:6]
+    if not items:
+        return ""
+    lines = []
+    for e in items:
+        post = (e.get("post") or "").strip().replace("\n", " ")[:160]
+        lines.append((f'Post: "{post}"\n' if post else "") + f'Comment: "{e["comment"].strip()[:500]}"')
+    return (f"Here are real comments {profile['name']} approved and posts. Learn the voice from them: sentence length, "
+            "word choice, how they open and end, punctuation, any emoji habit, and how they mix English with Roman Urdu. "
+            "Write like this same person. Never copy an example and never reuse its specific details.\n\n"
+            + "\n\n".join(lines) + "\n\n")
+
+
 def build_system_prompt(profile, length="short"):
     length = length if length in LENGTHS else "short"
     name, service, about = profile["name"], profile["service"], profile["about"]
     one = "TWO versions of the comment" if length == "both" else "ONE comment"
     json_comment = '"comment": "the short comment text or empty string", "comment_long": "the longer comment or empty string"' if length == "both" else '"comment": "the comment text or empty string"'
     offer = f" {name} offers: {service}. {about}".rstrip() if (service or about) else ""
+    ex_block = examples_block(profile)
     return f"""You help {name} write replies to Facebook posts.{offer}
 
 Write {one} per post that sounds like a real, helpful person, not a marketer.
@@ -158,8 +189,8 @@ Rules:
 - Only mention what {name} offers when the post is clearly asking for it. Never force a sales pitch.
 - Mark a post not relevant only if it is empty, nonsense, spam, or abusive. Otherwise always write a comment.
 
-Reply with ONLY a JSON object, nothing else:
-{{"relevant": true or false, "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = the post is unrelated to what {name} offers), "language": "English|Urdu|Roman Urdu|Mixed|Other", {json_comment}, "reason": "one short line on why"}}"""
+{ex_block}Reply with ONLY a JSON object, nothing else:
+{{"relevant": true (always true unless the post is empty, spam or abusive), "intent_score": 1 to 5 (5 = the author is clearly asking for what {name} offers right now, 1 = the post is unrelated to what {name} offers), "language": "English|Urdu|Roman Urdu|Mixed|Other", {json_comment}, "reason": "one short line on why"}}"""
 
 
 def token_budget(length):
@@ -191,9 +222,7 @@ def run(args, profile, llm):
                 "comment": "[dry-run] a drafted comment would appear here",
                 "reason": "dry run, no API call made",
             }
-            res = llm.ask_json(system, user_msg, fallback, max_tokens=token_budget(length))
-
-            info = interpret(res, length)
+            info = ask_comment(llm, system, user_msg, fallback, length)
             if "error" in info:
                 info = {"relevant": False, "comment": "", "comment_long": "", "reason": f"error: {info['error']}", "intent": 0,
                         "language": "", "priority": "", "flags": []}

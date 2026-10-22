@@ -466,3 +466,16 @@ textarea.big { min-height: 150px; }
 .q-opts .seg { display: inline-flex; gap: 4px; width: auto; grid-template-columns: none; }
 .q-opts .seg button { flex: none; }
 .q-opts + .q-row { margin-top: 16px; }
+
+/* saved comments (voice samples) */
+.ex-line { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); font-size: 14.5px; color: var(--muted); }
+.ex-line b { color: var(--text); }
+.ex-line .link { font-weight: 700; }
+.ex-list { display: grid; gap: 10px; margin-top: 6px; }
+.ex-item { border: 1px solid var(--edge); background: var(--bg); padding: 12px 14px; }
+.ex-item p { margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
+.ex-post { display: block; margin-top: 6px; color: var(--muted); }
+.ex-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; color: var(--muted); }
+.ex-meta .link { color: var(--bad); font-weight: 700; }
+#ex-drawer .f { display: grid; gap: 6px; font-size: 14.5px; font-weight: 600; }
+#ex-drawer textarea { width: 100%; }

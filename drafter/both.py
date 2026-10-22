@@ -136,7 +136,7 @@ def run(args, profile, llm):
                     fallback["comment"] = "[dry-run] a longer drafted comment would appear here, with more detail about how you would help."
                 if length == "both":
                     fallback["comment_long"] = "[dry-run] a longer drafted comment would appear here, with more detail about how you would help."
-                info = comments.interpret(llm.ask_json(comment_system, user_msg, fallback, max_tokens=comments.token_budget(length)), length)
+                info = comments.ask_comment(llm, comment_system, user_msg, fallback, length)
                 if "error" in info:
                     failed = True
                     row["comment_note"] = f"error: {info['error']}"

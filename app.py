@@ -15,6 +15,7 @@ import re
 import shutil
 import sys
 import threading
+import uuid
 import time
 import webbrowser
 from datetime import datetime
@@ -76,6 +77,53 @@ def udir(uid):
     d = RUNS / "users" / uid
     (d / "uploads").mkdir(parents=True, exist_ok=True)
     return d
+
+
+# ---------- approved comments the AI learns your voice from ----------
+EX_LOCK = threading.Lock()
+EX_MAX = 150
+
+
+def load_examples(uid):
+    p = udir(uid) / "examples.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+        return [e for e in data if isinstance(e, dict) and e.get("comment")]
+    except Exception:
+        return []
+
+
+def add_examples(uid, items, source):
+    """items: list of (comment, post). Skips empty and duplicate comments."""
+    with EX_LOCK:
+        data = load_examples(uid)
+        have = {re.sub(r"\s+", " ", e["comment"]).strip().lower() for e in data}
+        added = 0
+        for comment, post in items:
+            comment = str(comment or "").strip()[:900]
+            key = re.sub(r"\s+", " ", comment).lower()
+            if len(comment) < 8 or key in have:
+                continue
+            have.add(key)
+            data.append({"id": "e" + uuid.uuid4().hex[:10], "comment": comment, "post": str(post or "").strip()[:400],
+                         "source": source, "created": datetime.now().isoformat(timespec="seconds")})
+            added += 1
+        data = data[-EX_MAX:]
+        (udir(uid) / "examples.json").write_text(json.dumps(data), encoding="utf-8")
+        return added, len(data)
+
+
+def delete_example(uid, ex_id):
+    with EX_LOCK:
+        data = [e for e in load_examples(uid) if e.get("id") != ex_id]
+        (udir(uid) / "examples.json").write_text(json.dumps(data), encoding="utf-8")
+        return len(data)
+
+
+def pick_examples(uid, n=5):
+    """A few of your recent approved comments, shown to the AI as samples of your voice."""
+    data = load_examples(uid)[-40:]
+    return random.sample(data, min(n, len(data)))
 
 
 def list_runs(uid):
@@ -157,7 +205,7 @@ def worker(uid, cfg, out_path):
             name = cfg["name"] or "Me"
             profile = {
                 "name": name, "service": cfg["service"], "about": cfg["about"], "tone": cfg["tone"],
-                "comment_length": cfg["length"],
+                "comment_length": cfg["length"], "examples": pick_examples(uid),
                 "signoff": name, "opt_out_line": "If this isn't relevant, just reply 'no' and I won't email again.",
             }
             template_path = None
@@ -268,15 +316,13 @@ def rewrite_comment(uid, user, run_id, row_id, length, tone):
         if not _find_keys():
             raise ValueError("AI is not set up yet. Ask the admin to add an API key.")
     profile = {"name": cfg.get("name") or user["name"], "service": cfg.get("service", ""), "about": cfg.get("about", ""),
-               "tone": tone, "comment_length": length}
+               "tone": tone, "comment_length": length, "examples": pick_examples(uid)}
     user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
                 f"Post author: {row.get('name') or 'unknown'}\nPost text:\n{post_text[:2000]}")
     fallback = {"relevant": True, "intent_score": 3, "language": "English", "reason": "test run, no AI used",
                 "comment": "Test run: a rewritten comment would appear here.",
                 "comment_long": "Test run: a longer rewritten comment would appear here, with more detail."}
-    res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile, length), user_msg, fallback,
-                                    max_tokens=comments.token_budget(length))
-    info = comments.interpret(res, length)
+    info = comments.ask_comment(LLM(dry_run=dry), comments.build_system_prompt(profile, length), user_msg, fallback, length)
     if "error" in info:
         raise ValueError(info["error"])
     if not info["comment"]:
@@ -410,6 +456,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": str(e.code)})
                 except Exception as e:
                     return self.send(200, {"provider": "", "default": "", "models": [], "note": f"{type(e).__name__}: {e}"})
+            if url.path == "/api/examples":
+                return self.send(200, {"examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/results":
                 run = parse_qs(url.query).get("run", [""])[0]
                 return self.send(200, {"run": run, "rows": read_run(uid, run), "meta": public_meta(read_meta(uid, run), u)})
@@ -495,7 +543,8 @@ class Handler(BaseHTTPRequestHandler):
                     load_env()
                     if not _find_keys():
                         raise ValueError("AI is not set up yet. Ask the admin to add an API key, or tick 'Test run'.")
-                profile = {"name": name, "service": service, "about": about, "tone": tone, "comment_length": length}
+                profile = {"name": name, "service": service, "about": about, "tone": tone, "comment_length": length,
+                           "examples": pick_examples(uid)}
                 user_msg = (f"Style for this comment: {random.choice(comments.STYLE_HINTS)}\n\n"
                             f"Post author: unknown\nPost text:\n{post}")
                 fallback = {"relevant": True, "intent_score": 3, "language": "English", "reason": "test run, no AI used",
@@ -504,9 +553,7 @@ class Handler(BaseHTTPRequestHandler):
                     fallback["comment"] = "Test run: a longer AI comment will appear here, with more detail about how you would help."
                 if length == "both":
                     fallback["comment_long"] = "Test run: a longer AI comment will appear here, with more detail about how you would help."
-                res = LLM(dry_run=dry).ask_json(comments.build_system_prompt(profile, length), user_msg, fallback,
-                                                max_tokens=comments.token_budget(length))
-                info = comments.interpret(res, length)
+                info = comments.ask_comment(LLM(dry_run=dry), comments.build_system_prompt(profile, length), user_msg, fallback, length)
                 if "error" in info:
                     raise ValueError(info["error"])
                 return self.send(200, {"relevant": info["relevant"], "comment": info["comment"], "comment_long": info["comment_long"], "reason": info["reason"],
@@ -550,6 +597,18 @@ class Handler(BaseHTTPRequestHandler):
                 if d.get("action") != "approve_ready":
                     raise ValueError("Unknown action")
                 return self.send(200, {"approved": approve_ready(uid, d.get("run", ""))})
+            if url.path == "/api/examples":
+                d = self.json_body()
+                if d.get("action") == "delete":
+                    n = delete_example(uid, str(d.get("id", "")))
+                    return self.send(200, {"count": n, "examples": list(reversed(load_examples(uid)))})
+                items = d.get("items") if isinstance(d.get("items"), list) else [d]
+                pairs = [(str(i.get("comment", "")), str(i.get("post", ""))) for i in items[:4] if isinstance(i, dict)]
+                if not any(len(c.strip()) >= 8 for c, _ in pairs):
+                    raise ValueError("Write or paste a comment first (at least a few words).")
+                src = d.get("source") if d.get("source") in ("quick", "review", "manual") else "manual"
+                added, total = add_examples(uid, pairs, src)
+                return self.send(200, {"added": added, "count": total, "examples": list(reversed(load_examples(uid)))})
             if url.path == "/api/regenerate":
                 d = self.json_body()
                 length = d.get("length") if d.get("length") in comments.LENGTHS else "short"
@@ -557,7 +616,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, rewrite_comment(uid, u, d.get("run", ""), d.get("id", ""), length, tone))
             if url.path == "/api/update":
                 d = self.json_body()
-                return self.send(200, update_row(uid, d.get("run", ""), d.get("id", ""), d))
+                row = update_row(uid, d.get("run", ""), d.get("id", ""), d)
+                if d.get("decision") == "approve":  # an approved comment becomes a sample of your voice
+                    add_examples(uid, [(row.get("comment"), row.get("post_text")), (row.get("comment_long"), row.get("post_text"))], "review")
+                return self.send(200, row)
             self.fail(404, "Not found")
         except PermissionError as e:
             self.fail(401, str(e))

@@ -142,6 +142,7 @@
   async function quickComment() {
     const post = $('q-post').value.trim();
     if (post.length < 5) { $('q-hint').textContent = 'Paste the post text first.'; return; }
+    $('q-approve').textContent = 'Approve and save as example'; $('q-approve').disabled = false;
     $('q-go').disabled = true; $('q-again').disabled = true; $('q-go').textContent = 'Writing…'; $('q-hint').textContent = '';
     try {
       const r = await post_('/api/quick', { post, name: $('f-name').value, service: $('f-service').value, about: $('f-about').value, tone: state.tone, length: state.length, dry_run: $('f-dry').checked });
@@ -152,11 +153,49 @@
       $('q-comment').hidden = !ok; $('q-comment').value = r.comment || ''; grow($('q-comment'));
       const both = ok && !!r.comment_long;
       $('q-lbl-short').hidden = !both; $('q-long-wrap').hidden = !both; $('q-long').value = r.comment_long || ''; grow($('q-long'));
-      $('q-copy').hidden = !ok || both; $('q-again').textContent = ok ? 'Another version' : 'Try again';
+      $('q-copy').hidden = !ok || both; $('q-approve').hidden = !ok; $('q-again').textContent = ok ? 'Another version' : 'Try again';
       $('q-note').hidden = ok; $('q-note').textContent = ok ? '' : 'No comment written: ' + (r.reason || 'this post does not look like a request for your service.');
     } catch (e) { $('q-hint').textContent = e.message; }
     $('q-go').disabled = false; $('q-again').disabled = false; $('q-go').textContent = 'Write comment';
   }
+  // ---- approved comments: the AI copies your voice from these ----
+  state.ex = [];
+  function renderExLine() {
+    const n = state.ex.length;
+    $('ex-line').innerHTML = n
+      ? `<b>${n}</b> saved comment${n === 1 ? '' : 's'} guide${n === 1 ? 's' : ''} the AI so new ones sound like you. <button class="link" type="button" id="ex-open">Manage</button>`
+      : `Approve comments you like and the AI will learn your style. You can also <button class="link" type="button" id="ex-open">paste ones you wrote yourself</button>.`;
+    $('ex-open').addEventListener('click', openEx);
+  }
+  function renderExList() {
+    const box = $('ex-list');
+    box.innerHTML = state.ex.length ? state.ex.map((e) => `<div class="ex-item"><p>${esc(e.comment)}</p>
+      ${e.post ? `<small class="ex-post">Reply to: ${esc(e.post.slice(0, 120))}</small>` : ''}
+      <div class="ex-meta"><small>${esc({ quick: 'Quick comment', review: 'Approved in review', manual: 'Added by you' }[e.source] || 'Saved')}</small>
+      <button class="link" type="button" data-del="${esc(e.id)}">Delete</button></div></div>`).join('') : '<p class="note">Nothing saved yet.</p>';
+    box.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+      try { const r = await post('/api/examples', { action: 'delete', id: b.dataset.del }); state.ex = r.examples; renderExList(); renderExLine(); } catch (e) { toast(e.message); }
+    }));
+  }
+  async function loadExamples() { try { state.ex = (await api('/api/examples')).examples || []; } catch (e) { state.ex = []; } renderExLine(); }
+  const openEx = () => { renderExList(); $('ex-drawer').hidden = false; document.body.classList.add('no-scroll'); };
+  const closeEx = () => { $('ex-drawer').hidden = true; document.body.classList.remove('no-scroll'); };
+  $('ex-close').addEventListener('click', closeEx); $('ex-bg').addEventListener('click', closeEx);
+  $('ex-add').addEventListener('click', async () => {
+    try {
+      const r = await post('/api/examples', { comment: $('ex-comment').value, post: $('ex-post').value, source: 'manual' });
+      state.ex = r.examples; $('ex-comment').value = ''; $('ex-post').value = ''; renderExList(); renderExLine(); toast(r.added ? 'Saved' : 'That comment was already saved');
+    } catch (e) { toast(e.message); }
+  });
+  $('q-approve').addEventListener('click', async () => {
+    const items = [{ comment: $('q-comment').value, post: $('q-post').value }];
+    if (!$('q-long-wrap').hidden) items.push({ comment: $('q-long').value, post: $('q-post').value });
+    try {
+      const r = await post('/api/examples', { items, source: 'quick' });
+      state.ex = r.examples; renderExLine(); $('q-approve').textContent = 'Saved ✓'; $('q-approve').disabled = true;
+      toast(r.added ? 'Approved. The AI will learn from it' : 'Already saved');
+    } catch (e) { toast(e.message); }
+  });
   const post_ = post;
   $('q-go').addEventListener('click', quickComment); $('q-again').addEventListener('click', quickComment);
   $('q-copy').addEventListener('click', () => copy($('q-comment').value, 'Comment'));
@@ -259,7 +298,7 @@
   const openDrawer = () => { $('drawer').hidden = false; document.body.classList.add('no-scroll'); renderTabs(); renderList(); };
   const closeDrawer = () => { $('drawer').hidden = true; document.body.classList.remove('no-scroll'); };
   $('open-list').addEventListener('click', openDrawer); $('drawer-close').addEventListener('click', closeDrawer); $('drawer-bg').addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('drawer').hidden) closeDrawer(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('drawer').hidden) closeDrawer(); if (!$('ex-drawer').hidden) closeEx(); } });
   function renderTabs() {
     $('tabs').innerHTML = FILTERS.map(([k, l]) => `<button type="button" role="tab" data-f="${k}" aria-selected="${state.filter === k}">${l}</button>`).join('');
     $('tabs').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderTabs(); renderList(); }));
@@ -374,6 +413,7 @@
       if (b.dataset.act === 'approve' && r.qa_flags && !confirm('This draft has warnings:\n\n' + r.qa_flags + '\n\nApprove it anyway?')) return;
       try {
         Object.assign(r, await post('/api/update', { run: state.run, id: r.id, comment: val('comment'), comment_long: val('comment_long'), subject: val('subject'), body: val('body'), decision: b.dataset.act }));
+        if (b.dataset.act === 'approve' && !state.demo) loadExamples();
         if (b.dataset.act !== 'reset') nextOpen(r.id); renderAll(); window.scrollTo({ top: 0 });
       } catch (e) { toast(e.message); }
     }));
@@ -528,7 +568,7 @@
     $('f-model').closest('label').hidden = !state.user.admin;
     $('demo-banner').hidden = true; $('run-select').disabled = false; $('export').textContent = 'Export approved (CSV)';
     state.demo = false; state.rows = []; state.run = '';
-    await loadRuns(null, false); if (state.user.admin) loadModels(); applyLimit(); updateRun(); renderAccount(); showView('setup');
+    await loadRuns(null, false); loadExamples(); if (state.user.admin) loadModels(); applyLimit(); updateRun(); renderAccount(); showView('setup');
     if (s.job.state === 'running') { state.running = true; $('progress').hidden = false; $('run').textContent = 'Writing your drafts…'; updateRun(); poll(); }
   }
 
