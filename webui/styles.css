@@ -454,3 +454,8 @@ textarea.big:focus, input.big:focus { background: var(--bg-2); }
 textarea.big { min-height: 150px; }
 .mail .sub-prev { font-weight: 500; color: var(--muted); }
 .d-actions { margin-top: 28px; }
+
+/* ===== Square corners everywhere (formal look) ===== */
+*, *::before, *::after { border-radius: 0 !important; }
+.dot, .av-dot, .ev .lvl { border-radius: 50% !important; }
+:focus-visible { border-radius: 0 !important; }
