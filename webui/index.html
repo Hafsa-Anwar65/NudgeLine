@@ -209,23 +209,24 @@
       </div>
     </div>
 
-    <div id="tiles" class="tiles"></div>
-
-    <div id="tip" class="tip" hidden>
-      <b>What now?</b> Pick a lead from the list, read the drafts and edit them if you like, then press <b>Approve</b>.
-      When you are done, <b>export the approved ones</b> and post or send them yourself.
-      <button id="tip-close" class="link" type="button">Got it</button>
+    <div class="prog">
+      <div class="prog-top"><b id="prog-text"></b><button id="open-list" class="btn btn-ghost btn-sm" type="button">All leads</button></div>
+      <div class="pbar"><i id="prog-bar"></i></div>
     </div>
 
-    <div class="toolbar">
-      <div id="tabs" class="tabs" role="tablist"></div>
-      <input id="search" type="search" placeholder="Search leads…" aria-label="Search leads">
-      <button id="approve-all" class="btn btn-ok btn-sm" type="button">Approve all ready</button>
-    </div>
-
-    <div id="split" class="split">
-      <div id="list" class="list" role="listbox" aria-label="Leads"></div>
+    <div class="focus">
       <article id="detail" class="detail" aria-live="polite"></article>
+    </div>
+
+    <div id="drawer" class="drawer" hidden>
+      <div class="drawer-bg" id="drawer-bg"></div>
+      <aside class="drawer-panel" role="dialog" aria-label="All leads">
+        <div class="drawer-h"><h2>All leads</h2><button id="drawer-close" class="btn btn-ghost btn-sm" type="button">Close</button></div>
+        <div id="tabs" class="ftabs" role="tablist"></div>
+        <input id="search" type="search" placeholder="Search leads…" aria-label="Search leads">
+        <button id="approve-all" class="btn btn-ok btn-sm" type="button">Approve all ready</button>
+        <div id="list" class="list" role="listbox" aria-label="Leads"></div>
+      </aside>
     </div>
   </section>
 </main>

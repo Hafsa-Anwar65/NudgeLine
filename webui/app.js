@@ -225,16 +225,13 @@
   async function openRun(run) {
     const d = await api('/api/results?run=' + encodeURIComponent(run));
     state.run = run; state.rows = d.rows; state.meta = d.meta || {}; state.sel = null; state.rw = {};
-    $('view-results').classList.remove('show-detail');
     const first = state.rows.find((r) => r.status === 'needs_edit') || state.rows.find((r) => r.status === 'draft') || state.rows[0];
     state.sel = first ? first.id : null;
     showView('results'); renderAll();
-    if (!store.get('nl-tip-seen')) $('tip').hidden = false;
   }
-  $('tip-close').addEventListener('click', () => { $('tip').hidden = true; store.set('nl-tip-seen', '1'); });
 
   // ---------- results ----------
-  const FILTERS = [['all', 'All'], ['ready', 'Ready'], ['check', 'Check this'], ['approved', 'Approved'], ['other', 'Skipped / failed']];
+  const FILTERS = [['all', 'All'], ['ready', 'Ready'], ['check', 'Need a look'], ['approved', 'Approved'], ['other', 'Skipped']];
   const inFilter = (r) => state.filter === 'all' || (state.filter === 'ready' && r.status === 'draft') || (state.filter === 'check' && r.status === 'needs_edit')
     || (state.filter === 'approved' && r.status === 'approved') || (state.filter === 'other' && ['skipped', 'error', 'rejected'].includes(r.status));
   const inSearch = (r) => !state.q || [r.company, r.name, r.email, r.post_text, r.comment, r.subject].join(' ').toLowerCase().includes(state.q);
@@ -244,18 +241,18 @@
 
   function renderSummary() {
     const m = state.meta, n = state.rows.length;
-    const comments = state.rows.filter((r) => r.comment).length, mails = state.rows.filter((r) => r.body).length;
-    $('sum-sub').textContent = [m.source, m.tone && `${m.tone} tone`, m.model, m.seconds != null && `took ${m.seconds}s`].filter(Boolean).join(' · ') || 'Review each draft below.';
-    const tiles = [
-      ['', 'all', n, 'Leads processed'], ['', 'all', comments, 'Comments written'], ['', 'all', mails, 'Emails written'],
-      ['ok', 'ready', count('draft'), 'Ready to approve'], ['warn', 'check', count('needs_edit'), 'Need a quick look'],
-      ['bad', 'other', count('skipped') + count('error') + count('rejected'), 'Skipped / failed'],
-    ];
-    $('tiles').innerHTML = tiles.map(([c, f, v, l]) => `<button type="button" class="tile ${c}" data-f="${f}"><b>${v}</b><span>${l}</span></button>`).join('');
-    $('tiles').querySelectorAll('.tile').forEach((t) => t.addEventListener('click', () => { state.filter = t.dataset.f; renderTabs(); renderList(); }));
-    $('approve-all').disabled = count('draft') === 0;
-    $('approve-all').textContent = count('draft') ? `Approve all ready (${count('draft')})` : 'Approve all ready';
+    $('sum-sub').textContent = [m.source, m.tone && `${m.tone} tone`, m.model].filter(Boolean).join(' · ') || 'Check each lead, then approve it.';
+    const ok = count('approved'), look = count('needs_edit'), ready = count('draft');
+    const decided = ok + count('rejected') + count('skipped') + count('error');
+    $('prog-text').textContent = `${ok} of ${n} approved` + (look ? ` · ${look} need a look` : '') + (ready && !look ? ` · ${ready} to review` : '');
+    $('prog-bar').style.width = (n ? Math.round(100 * decided / n) : 0) + '%';
+    $('approve-all').disabled = ready === 0;
+    $('approve-all').textContent = ready ? `Approve all ready (${ready})` : 'Approve all ready';
   }
+  const openDrawer = () => { $('drawer').hidden = false; document.body.classList.add('no-scroll'); renderTabs(); renderList(); };
+  const closeDrawer = () => { $('drawer').hidden = true; document.body.classList.remove('no-scroll'); };
+  $('open-list').addEventListener('click', openDrawer); $('drawer-close').addEventListener('click', closeDrawer); $('drawer-bg').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('drawer').hidden) closeDrawer(); });
   function renderTabs() {
     $('tabs').innerHTML = FILTERS.map(([k, l]) => `<button type="button" role="tab" data-f="${k}" aria-selected="${state.filter === k}">${l}</button>`).join('');
     $('tabs').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderTabs(); renderList(); }));
@@ -274,7 +271,7 @@
     box.querySelectorAll('.row').forEach((b) => b.addEventListener('click', () => select(b.dataset.id)));
   }
   function select(id) {
-    state.sel = id; $('view-results').classList.add('show-detail');
+    state.sel = id; closeDrawer();
     renderList(); renderDetail(); window.scrollTo({ top: 0 });
   }
 
@@ -296,58 +293,59 @@
 
   function renderDetail() {
     const box = $('detail'), r = state.rows.find((x) => x.id === state.sel);
-    if (!r) { box.innerHTML = '<div class="empty-d"><h3>Pick a lead</h3><p>Choose one from the list to read and edit its drafts.</p></div>'; return; }
+    if (!r) { box.innerHTML = '<div class="empty-d"><h3>Nothing to show</h3><p>There are no leads in this run.</p></div>'; return; }
     const s = st(r.status), hasEmail = !!(r.subject || r.body), locked = ['error', 'skipped'].includes(r.status);
+    const all = visible(), pos = all.findIndex((x) => x.id === r.id) + 1;
     const intent = r.intent_score ? ` · ${r.intent_score}/5 interest` : '';
     const both = !!(r.comment && r.comment_long);
     state.tab = state.tab || {};
     let tab = both && state.tab[r.id] === 'long' ? 'long' : 'short';
-    const num = (n) => `<span class="num">${n}</span>`;
-    let n = 0;
+    const meta = [r.priority ? r.priority[0].toUpperCase() + r.priority.slice(1) + ' priority' + intent : '', r.language].filter(Boolean).join(' · ');
     box.innerHTML = `
-      <button class="btn btn-ghost btn-sm back" type="button" id="back">← All leads</button>
-      <div class="d-head"><div><h2>${esc(r.company || r.name || r.email || 'Lead')}</h2><div class="d-sub">${esc([r.name, r.email].filter(Boolean).join(' · '))}</div></div>
-        <span class="badge ${s.c}">${s.t}</span></div>
-      <div class="chips">${r.priority ? `<span class="chip acc">${esc(r.priority[0].toUpperCase() + r.priority.slice(1))} priority${intent}</span>` : ''}${r.language ? `<span class="chip">${esc(r.language)}</span>` : ''}</div>
-      ${r.qa_flags ? `<div class="warnbox"><b>Check before you approve</b><br>${esc(r.qa_flags)}</div>` : ''}
-      ${r.post_text ? `<section class="sec"><h3 class="sec-h">${num(++n)} Their post</h3><p class="post">${esc(r.post_text)}</p></section>` : ''}
-      <section class="sec"><h3 class="sec-h">${num(++n)} Comment to post</h3>
+      <div class="navrow"><button class="link" type="button" id="back">☰ All leads</button>
+        <span class="pos">Lead ${pos || 1} of ${all.length || state.rows.length}</span>
+        <span class="nav2"><button class="btn btn-ghost btn-sm" id="prev" type="button">‹ Previous</button><button class="btn btn-ghost btn-sm" id="next" type="button">Next ›</button></span></div>
+      <header class="lead-h"><div><h2>${esc(r.company || r.name || r.email || 'Lead')}</h2><div class="d-sub">${esc([r.name, r.email].filter(Boolean).join(' · '))}</div>${meta ? `<div class="meta">${esc(meta)}</div>` : ''}</div>
+        <span class="badge ${s.c}">${s.t}</span></header>
+      ${r.qa_flags ? `<div class="warnline"><b>Check before approving:</b> ${esc(r.qa_flags)}</div>` : ''}
+      ${r.post_text ? `<section class="part"><h3>Their post</h3><blockquote class="post">${esc(r.post_text)}</blockquote></section>` : ''}
+      <section class="part"><h3>Your comment</h3>
         ${r.comment ? `
-        ${both ? `<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="short" aria-selected="${tab === 'short'}">Short</button><button type="button" role="tab" data-tab="long" aria-selected="${tab === 'long'}">Longer</button></div>` : ''}
+        ${both ? `<div class="ctabs" role="tablist"><button type="button" role="tab" data-tab="short" aria-selected="${tab === 'short'}">Short</button><button type="button" role="tab" data-tab="long" aria-selected="${tab === 'long'}">Longer</button></div>` : ''}
         <textarea data-f="comment" rows="4" class="big"${tab === 'long' ? ' hidden' : ''}>${esc(r.comment)}</textarea>
         ${both ? `<textarea data-f="comment_long" rows="8" class="big"${tab === 'short' ? ' hidden' : ''}>${esc(r.comment_long)}</textarea>` : ''}
-        <div class="sec-row"><button class="btn btn-ok" data-copy="comment" type="button">Copy comment</button>
-          ${r.post_text ? '<button class="btn btn-ghost" id="rw-toggle" type="button">Change length or tone</button>' : ''}
+        <div class="sec-row"><button class="btn btn-primary" data-copy="comment" type="button">Copy comment</button>
+          ${r.post_text ? '<button class="link" id="rw-toggle" type="button">Change length or tone</button>' : ''}
           <span class="wc" id="wc"></span></div>`
         : `<p class="note">No comment was written: ${esc((r.comment_note || '').replace(/^skipped:\s*/, '') || 'nothing to reply to')}</p>`}
         ${r.post_text ? rewriteBar(r, !r.comment) : ''}
       </section>
-      ${hasEmail ? `<section class="sec"><h3 class="sec-h">${num(++n)} Email to send</h3>
+      ${hasEmail ? `<details class="part mail"><summary><h3>Email</h3><span class="sub-prev">${esc(r.subject)}</span></summary>
         <label class="lbl" for="e-sub">Subject</label><input id="e-sub" class="big" data-f="subject" type="text" value="${esc(r.subject)}">
         <label class="lbl" for="e-body">Message</label><textarea id="e-body" class="big" data-f="body" rows="10">${esc(r.body)}</textarea>
-        <div class="sec-row"><button class="btn btn-ok" data-copy="email" type="button">Copy email</button></div></section>`
+        <div class="sec-row"><button class="btn btn-ghost" data-copy="email" type="button">Copy email</button></div></details>`
         : (r.angle ? `<p class="note">No email: ${esc(r.angle)}</p>` : '')}
       <div class="d-actions">
         ${locked ? '' : r.status === 'approved' || r.status === 'rejected' ? '<button class="btn btn-ghost" data-act="reset" type="button">Undo</button>'
-          : '<button class="btn btn-ok btn-lg-ok" data-act="approve" type="button">✓ Approve</button><button class="btn btn-bad" data-act="reject" type="button">Reject</button>'}
+          : '<button class="btn btn-ok btn-lg-ok" data-act="approve" type="button">✓ Approve</button><button class="btn btn-ghost" data-act="reject" type="button">Reject</button>'}
         <span class="saved">Saved ✓</span>
-        <span class="d-nav"><button class="btn btn-ghost btn-sm" id="prev" type="button" aria-label="Previous lead">↑</button><button class="btn btn-ghost btn-sm" id="next" type="button" aria-label="Next lead">↓</button></span>
       </div>`;
 
     const val = (f) => { const x = box.querySelector(`[data-f="${f}"]`); return x ? x.value : undefined; };
     const active = () => box.querySelector(tab === 'long' ? '[data-f="comment_long"]' : '[data-f="comment"]');
-    const count = () => { const w = $('wc'), a = active(); if (w && a) w.textContent = words(a.value); };
-    box.querySelectorAll('textarea:not([hidden])').forEach(grow); count();
+    const count_ = () => { const w = $('wc'), a = active(); if (w && a) w.textContent = words(a.value); };
+    box.querySelectorAll('textarea:not([hidden])').forEach(grow); count_();
+    box.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => d.open && d.querySelectorAll('textarea').forEach(grow)));
     box.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
       tab = b.dataset.tab; state.tab[r.id] = tab;
       box.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
       box.querySelector('[data-f="comment"]').hidden = tab === 'long'; box.querySelector('[data-f="comment_long"]').hidden = tab === 'short';
-      grow(active()); count();
+      grow(active()); count_();
     }));
-    box.querySelectorAll('textarea').forEach((x) => x.addEventListener('input', count));
+    box.querySelectorAll('textarea').forEach((x) => x.addEventListener('input', count_));
     if ($('rw')) {
       const o = state.rw[r.id];
-      if ($('rw-toggle')) $('rw-toggle').addEventListener('click', () => { $('rw').hidden = !$('rw').hidden; $('rw-toggle').classList.toggle('on', !$('rw').hidden); });
+      if ($('rw-toggle')) $('rw-toggle').addEventListener('click', () => { $('rw').hidden = !$('rw').hidden; });
       $('rw-len').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { o.length = b.dataset.v; $('rw-len').querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); }));
       $('rw-tone').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { o.tone = b.dataset.v; $('rw-tone').querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); }));
       $('rw-go').addEventListener('click', async () => {
@@ -357,9 +355,9 @@
       });
     }
     const flash = () => { const e = box.querySelector('.saved'); e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 1300); };
-    $('back').addEventListener('click', () => $('view-results').classList.remove('show-detail'));
+    $('back').addEventListener('click', openDrawer);
     box.querySelectorAll('[data-f]').forEach((x) => x.addEventListener('change', async () => {
-      try { Object.assign(r, await post('/api/update', { run: state.run, id: r.id, [x.dataset.f]: x.value })); flash(); renderList(); } catch (e) { toast(e.message); }
+      try { Object.assign(r, await post('/api/update', { run: state.run, id: r.id, [x.dataset.f]: x.value })); flash(); } catch (e) { toast(e.message); }
     }));
     box.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () =>
       b.dataset.copy === 'comment' ? copy(active().value, both ? (tab === 'long' ? 'Longer comment' : 'Short comment') : 'Comment') : copy(`Subject: ${val('subject')}\n\n${val('body')}`, 'Email')));
@@ -367,7 +365,7 @@
       if (b.dataset.act === 'approve' && r.qa_flags && !confirm('This draft has warnings:\n\n' + r.qa_flags + '\n\nApprove it anyway?')) return;
       try {
         Object.assign(r, await post('/api/update', { run: state.run, id: r.id, comment: val('comment'), comment_long: val('comment_long'), subject: val('subject'), body: val('body'), decision: b.dataset.act }));
-        if (b.dataset.act !== 'reset') nextOpen(r.id); renderAll();
+        if (b.dataset.act !== 'reset') nextOpen(r.id); renderAll(); window.scrollTo({ top: 0 });
       } catch (e) { toast(e.message); }
     }));
     $('prev').addEventListener('click', () => step(-1)); $('next').addEventListener('click', () => step(1));
@@ -375,7 +373,7 @@
   function step(d) {
     const rows = visible(), i = rows.findIndex((x) => x.id === state.sel);
     if (i < 0 || !rows.length) return; const n = rows[Math.min(rows.length - 1, Math.max(0, i + d))];
-    state.sel = n.id; renderList(); renderDetail();
+    state.sel = n.id; renderList(); renderDetail(); window.scrollTo({ top: 0 });
   }
   function nextOpen(afterId) {  // after approving/rejecting, jump to the next lead that still needs a decision
     const rows = state.rows, i = rows.findIndex((x) => x.id === afterId);
@@ -472,7 +470,6 @@
       showView('results'); $('demo-banner').hidden = false; $('run-select').innerHTML = '<option>Demo run</option>'; $('run-select').disabled = true;
       $('export').textContent = 'Create account to export'; $('export').disabled = false;
       renderAll(); renderAccount();
-      if (!store.get('nl-tip-seen')) $('tip').hidden = false;
     } catch (e) { toast(e.message); }
   }
   // exporting in demo mode sends people to sign up instead
