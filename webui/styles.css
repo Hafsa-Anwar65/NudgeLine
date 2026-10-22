@@ -288,3 +288,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .seg-sm { display: inline-grid; grid-template-columns: repeat(3, auto); }
 .seg-sm button { padding: 6px 12px; font-size: 13px; text-transform: none; }
 .rw select { width: auto; min-width: 120px; padding: 7px 10px; font-size: 14px; border-radius: 10px; }
+
+/* readable dropdown lists in both themes (the field background is see-through, the list must not be) */
+select option { background: var(--bg-2); color: var(--text); }
+.rw { row-gap: 10px; }
+.rw-t { flex: 1 1 100%; margin-right: 0; }
+.rw .seg-sm { flex: 0 1 auto; }
+.rw .btn { margin-left: auto; }
+.seg-sm button { white-space: nowrap; }

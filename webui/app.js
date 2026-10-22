@@ -286,7 +286,7 @@
     const o = state.rw[r.id] || (state.rw[r.id] = { length: r.comment_long ? 'both' : (state.meta.length || state.length || 'short'), tone: state.meta.tone || state.tone });
     return `<div class="rw" id="rw"><span class="rw-t">Rewrite this comment</span>
       <div class="seg seg-sm" id="rw-len" role="radiogroup" aria-label="Length">${LENGTHS.map(([v, l]) => `<button type="button" role="radio" data-v="${v}" aria-checked="${v === o.length}">${l}</button>`).join('')}</div>
-      <select id="rw-tone" aria-label="Tone">${state.tones.map((t) => `<option value="${esc(t)}"${t === o.tone ? ' selected' : ''}>${esc(t[0].toUpperCase() + t.slice(1))}</option>`).join('')}</select>
+      <div class="seg seg-sm" id="rw-tone" role="radiogroup" aria-label="Tone">${state.tones.map((t) => `<button type="button" role="radio" data-v="${esc(t)}" aria-checked="${t === o.tone}">${esc(t[0].toUpperCase() + t.slice(1))}</button>`).join('')}</div>
       <button class="btn btn-primary btn-sm" id="rw-go" type="button">Rewrite</button></div>`;
   }
 
@@ -320,7 +320,7 @@
     if ($('rw')) {
       const o = state.rw[r.id];
       $('rw-len').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { o.length = b.dataset.v; $('rw-len').querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); }));
-      $('rw-tone').addEventListener('change', (e) => { o.tone = e.target.value; });
+      $('rw-tone').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { o.tone = b.dataset.v; $('rw-tone').querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b))); }));
       $('rw-go').addEventListener('click', async () => {
         const btn = $('rw-go'); btn.disabled = true; btn.textContent = 'Writing…';
         try { Object.assign(r, await post('/api/regenerate', { run: state.run, id: r.id, length: o.length, tone: o.tone })); toast('Comment rewritten'); renderAll(); }
