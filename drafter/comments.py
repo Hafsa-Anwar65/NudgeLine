@@ -137,11 +137,11 @@ def load_posts(path):
 
 
 LENGTH_RULES = {
-    "short": "- 1 to 3 short sentences, ideally under 40 words.",
+    "short": "- 2 to 4 short sentences, roughly 35 to 65 words. Enough to give a real tip or a useful question, not a one-liner.",
     "long": ("- A fuller reply: 4 to 7 sentences, roughly 70 to 130 words, in one or two short paragraphs. "
              "Say more about how you would approach their specific situation, but stay as casual and human as a short reply: no structure, no lists, no sign-off."),
-    "both": ("- Write TWO versions of the same reply. \"comment\" is the SHORT one: 1 to 3 short sentences, "
-             "ideally under 40 words. \"comment_long\" is the LONGER one: 4 to 7 sentences, roughly 70 to 130 words, "
+    "both": ("- Write TWO versions of the same reply. \"comment\" is the SHORT one: 2 to 4 short sentences, "
+             "roughly 35 to 65 words, enough for a real tip or useful question, not a one-liner. \"comment_long\" is the LONGER one: 4 to 7 sentences, roughly 70 to 130 words, "
              "in one or two short paragraphs, with more detail on how you would approach their specific situation. "
              "Both must take the same angle and the same tone."),
 }
@@ -181,12 +181,12 @@ Rules:
 - Never use long dashes (— or –), semicolons, bullet points, headings, bold text, or quotation marks around phrases. Use commas and full stops only.
 - Avoid AI-sounding words and phrases: delve, envision, leverage, seamless, robust, elevate, streamline, unlock, crucial, navigate, tailor, game-changer, "feel free to", "reach out", "I'd be happy to", "hope this helps", "Absolutely", "Certainly", "Great question".
 - Do not repeat the post back, do not wrap up with a neat summary line, and do not list three things in a row. Say one or two real things and stop.
-- Be helpful first: a tip, a useful question, or encouragement. Only invite a DM if the post clearly asks for someone to provide the service.
+- Be helpful first: a tip, a useful question, or encouragement. Only invite a DM (a light "happy to chat in DMs") if the post clearly asks for someone to provide the service.
 - No links, phone numbers, hashtags, or sales slogans. At most one emoji, and only if it fits naturally.
 - Be honest. Do not claim experiences you cannot know, do not pretend to be a customer, and do not invent results or prices.
 - Do not start with "Great post!" or similar generic openers.
 - Write a comment for ANY post, whatever the topic. Do not limit yourself to {service or "one subject"}. If the post has nothing to do with what {name} offers, just be a genuinely helpful, friendly reply (advice, a useful question, encouragement or congratulations) and do not pitch anything.
-- Only mention what {name} offers when the post is clearly asking for it. Never force a sales pitch.
+- When the post is asking for, or clearly close to, what {name} offers, let the reader quietly understand that {name} does this work, in passing and in plain words (for example "I do this kind of work", "this is what I work on day to day", "I help people with this"). Never a pitch: no prices, no list of services, no "contact me", no "hire me". The tip or question still comes first and the hint is one small clause. If the post has nothing to do with what {name} offers, do not mention it at all.
 - Mark a post not relevant only if it is empty, nonsense, spam, or abusive. Otherwise always write a comment.
 
 {ex_block}Reply with ONLY a JSON object, nothing else:
